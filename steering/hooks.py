@@ -12,19 +12,30 @@ from core.model_common import get_decoder_layers
 
 
 def unwrap_hidden(output):
-    """A decoder layer's forward can return EITHER a plain hidden_states tensor OR a tuple whose
-    first element is hidden_states, depending on transformers version and whether cache/attention
-    outputs are requested -- confirmed as a REAL, version-dependent difference (not a hypothetical
-    one): a hook written assuming "always a tuple" silently mis-indexes a plain tensor (`output[0]`
-    on a tensor selects along the batch dimension instead of raising) and then wraps the result
-    BACK into a tuple, so the next layer receives a tuple where it expects a tensor --
+    """A decoder layer's forward can return EITHER a plain hidden_states tensor OR some sequence-
+    like container (a tuple, or an HF ModelOutput-style object that supports `output[0]` /
+    `output[1:]` indexing without being a literal `tuple` instance) whose first element is
+    hidden_states -- depending on transformers version and whether cache/attention outputs are
+    requested. Confirmed as a REAL, version-dependent difference (not a hypothetical one): a hook
+    written assuming "always a tuple" silently mis-indexes a plain tensor (`output[0]` on a
+    tensor selects along the batch dimension instead of raising) and then wraps the result BACK
+    into a tuple, so the next layer receives a tuple where it expects a tensor --
     `AttributeError: 'tuple' object has no attribute 'dtype'` deep inside the model's own forward,
-    on a transformers version that returns a plain tensor here. Returns (hidden_states, rest),
-    where `rest` is None if the original output was a plain tensor (so rewrap_hidden knows to
-    return a plain tensor back, not a 1-tuple) or the remaining tuple elements otherwise."""
-    if isinstance(output, tuple):
-        return output[0], output[1:]
-    return output, None
+    on a transformers version that returns a plain tensor here.
+
+    Checks `isinstance(output, torch.Tensor)` -- the unambiguous case -- rather than
+    `isinstance(output, tuple)`, deliberately: a check that only recognizes literal tuples would
+    wrongly fall into the "plain tensor" branch for a ModelOutput-style container (not a tuple
+    instance, but still indexable), returning that whole container as if it WERE the hidden
+    states tensor -- a second, subtler way to reach the exact same downstream crash. Treating
+    "not a Tensor" as "sequence-like, index into it" covers tuples, lists, and ModelOutput alike.
+
+    Returns (hidden_states, rest), where `rest` is None if the original output was a plain tensor
+    (so rewrap_hidden knows to return a plain tensor back, not a 1-tuple) or the remaining
+    elements (normalized to a real tuple) otherwise."""
+    if isinstance(output, torch.Tensor):
+        return output, None
+    return output[0], tuple(output[1:])
 
 
 def rewrap_hidden(new_hidden: torch.Tensor, rest):
