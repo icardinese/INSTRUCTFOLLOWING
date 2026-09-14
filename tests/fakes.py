@@ -2,6 +2,17 @@
 an earlier version of this without masking silently made every batched-generation test meaningless
 (padding tokens corrupted real ones without the test noticing) -- this version was specifically
 built to catch that class of bug.
+
+TinyLayer's `return_tuple` flag exists for the same reason, added after a REAL incident: every
+hook in this project (steering/hooks.py, every forward_with_gate_hook) assumed a decoder layer's
+forward always returns a `(hidden_states, ...)` tuple. TinyLayer used to only ever return a tuple
+too, so nothing in this test suite could ever have caught the real transformers version where a
+decoder layer returns hidden_states as a PLAIN TENSOR instead -- the hook's `output[0]` then
+silently mis-indexes along the batch dimension instead of raising, corrupting the forward pass
+several layers downstream (`AttributeError: 'tuple' object has no attribute 'dtype'`, observed in
+a real overnight run). Tests that care about this (see test_steering_psr_gate.py's
+tuple-vs-plain-tensor tests) build a model with `return_tuple=False` specifically to exercise the
+path that used to be untestable.
 """
 import types
 
@@ -9,9 +20,10 @@ import torch
 
 
 class TinyLayer(torch.nn.Module):
-    def __init__(self, d):
+    def __init__(self, d, return_tuple: bool = True):
         super().__init__()
         self.lin = torch.nn.Linear(d, d)
+        self.return_tuple = return_tuple
 
     def forward(self, x, mask=None):
         if mask is None:
@@ -20,15 +32,16 @@ class TinyLayer(torch.nn.Module):
         cumsum = torch.cumsum(masked_x, dim=1)
         count = torch.cumsum(mask, dim=1).clamp(min=1)
         cum_mean = cumsum / count
-        return (self.lin(x + 0.3 * cum_mean) + x,)
+        out = self.lin(x + 0.3 * cum_mean) + x
+        return (out,) if self.return_tuple else out
 
 
 class TinyModel(torch.nn.Module):
-    def __init__(self, d=16, n=3, vocab=200):
+    def __init__(self, d=16, n=3, vocab=200, layer_returns_tuple: bool = True):
         super().__init__()
         self.embed = torch.nn.Embedding(vocab, d)
         self.model = torch.nn.Module()
-        self.model.layers = torch.nn.ModuleList([TinyLayer(d) for _ in range(n)])
+        self.model.layers = torch.nn.ModuleList([TinyLayer(d, return_tuple=layer_returns_tuple) for _ in range(n)])
         self.device = "cpu"
         self.config = type("Cfg", (), {"hidden_size": d})()
 
@@ -37,7 +50,8 @@ class TinyModel(torch.nn.Module):
         mask = attention_mask.unsqueeze(-1).float() if attention_mask is not None else None
         hs = [h]
         for layer in self.model.layers:
-            (h,) = layer(h, mask)
+            out = layer(h, mask)
+            h = out[0] if isinstance(out, tuple) else out
             hs.append(h)
         out = types.SimpleNamespace()
         out.hidden_states = tuple(hs)
@@ -94,5 +108,5 @@ class TinyTokenizer:
         return messages[0]["content"]
 
 
-def make_fake_model_and_tokenizer(d: int = 16, n_layers: int = 3):
-    return TinyModel(d=d, n=n_layers), TinyTokenizer()
+def make_fake_model_and_tokenizer(d: int = 16, n_layers: int = 3, layer_returns_tuple: bool = True):
+    return TinyModel(d=d, n=n_layers, layer_returns_tuple=layer_returns_tuple), TinyTokenizer()

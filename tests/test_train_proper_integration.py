@@ -69,6 +69,33 @@ def test_nonzero_nll_weight_changes_trained_gate_versus_zero_weight():
     )
 
 
+def test_pure_nll_training_mse_weight_zero_differs_from_pure_mse():
+    """mse_weight=0.0 must mean the MSE term contributes NO gradient at all -- a genuine,
+    mutually-exclusive alternative (matching Heyman & Vandeputte's actual _MSE vs _LL split),
+    not just a smaller nudge. Training pure-MSE (mse_weight=1, nll_weight=0) vs pure-NLL
+    (mse_weight=0, nll_weight=1) from the same seed must diverge."""
+    model, tokenizer = _setup()
+
+    pure_mse = train_one_config(
+        model, tokenizer, layer_idx=1, seed=3, n_layers=4, hidden_size=16, device="cpu",
+        train_items=ITEMS, dev_items=ITEMS, train_responses=RESPONSES, dev_responses=RESPONSES,
+        n_epochs=2, mse_weight=1.0, nll_weight=0.0,
+    )
+    pure_nll = train_one_config(
+        model, tokenizer, layer_idx=1, seed=3, n_layers=4, hidden_size=16, device="cpu",
+        train_items=ITEMS, dev_items=ITEMS, train_responses=RESPONSES, dev_responses=RESPONSES,
+        n_epochs=2, mse_weight=0.0, nll_weight=1.0,
+    )
+    assert not torch.allclose(pure_mse["weight"], pure_nll["weight"]), (
+        "pure MSE and pure NLL training from the same seed must diverge -- if identical, "
+        "mse_weight isn't actually gating the MSE term's contribution to the gradient."
+    )
+    # Both still REPORT both metrics (diagnostics are always computed regardless of weights).
+    for result in (pure_mse, pure_nll):
+        assert result["final_mse"] >= 0.0
+        assert result["final_nll"] >= 0.0
+
+
 def test_on_epoch_end_receives_live_gate_and_direction_each_epoch():
     model, tokenizer = _setup()
     seen_epochs = []

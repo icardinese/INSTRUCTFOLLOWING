@@ -10,6 +10,7 @@ import torch
 import torch.nn.functional as F
 
 from core.model_common import get_decoder_layers
+from steering.hooks import rewrap_hidden, unwrap_hidden
 
 
 @dataclass
@@ -72,17 +73,23 @@ def forward_with_gate_hook(model, gate: GateState, direction: torch.Tensor, laye
     logits come from this SAME forward pass (the model call below already computes them for a
     causal LM head) -- returning them costs nothing extra and is what steering/psr/nll.py's
     auxiliary NLL loss needs; before this, they were silently discarded via `out.hidden_states`
-    alone."""
+    alone.
+
+    Uses steering.hooks.unwrap_hidden/rewrap_hidden rather than assuming `output` is always a
+    tuple -- some transformers versions return the decoder layer's hidden_states as a plain
+    tensor instead, and assuming a tuple there causes a real, confirmed crash (`AttributeError:
+    'tuple' object has no attribute 'dtype'` several layers downstream, once the mis-wrapped
+    tuple gets fed into the next layer as if it were the hidden-states tensor)."""
     layer = get_decoder_layers(model)[layer_idx]
     captured_fit = {}
 
     def wrapped(module, inputs, output):
-        hidden = output[0]
+        hidden, rest = unwrap_hidden(output)
         mask = answer_only_mask(hidden.shape[1], n_resp, hidden.device)
         coeff, fit = coefficient(gate, hidden, mask)
         correction = (coeff * direction.to(hidden.dtype)).to(hidden.dtype)
         captured_fit["fit"] = fit
-        return (hidden + correction,) + tuple(output[1:])
+        return rewrap_hidden(hidden + correction, rest)
 
     handle = layer.register_forward_hook(wrapped)
     try:

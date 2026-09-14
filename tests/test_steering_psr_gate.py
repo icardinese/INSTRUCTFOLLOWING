@@ -93,6 +93,53 @@ def test_make_inference_hook_prefill_is_noop_generation_step_is_steered():
     assert torch.allclose(out, expected, atol=1e-5)
 
 
+def test_forward_with_gate_hook_works_when_decoder_layer_returns_a_plain_tensor():
+    """Regression test for a REAL crash: some transformers versions return a decoder layer's
+    hidden_states as a plain tensor, not a (hidden_states, ...) tuple. A hook that assumes
+    "always a tuple" (output[0]) silently mis-indexes a plain tensor instead of raising, then
+    wraps the result BACK into a tuple -- so the NEXT layer receives a tuple where it expects a
+    tensor, crashing several frames downstream with `AttributeError: 'tuple' object has no
+    attribute 'dtype'`. This is exactly why TinyLayer/TinyModel gained a layer_returns_tuple=False
+    mode: the previous fake model only ever returned tuples, so nothing in this suite could have
+    caught this until now."""
+    model, _ = make_fake_model_and_tokenizer(d=16, n_layers=4, layer_returns_tuple=False)
+    for p in model.parameters():
+        p.requires_grad_(False)
+    gate = init_gate_state(16, "cpu")
+    direction = torch.randn(16)
+    input_ids = torch.randint(0, 200, (1, 6))
+
+    # forward_with_gate_hook hooks layer 1 of 4 -- if the hook mishandles the plain-tensor output,
+    # layers 2 and 3 receive a corrupted (tuple-wrapped) hidden_states and this raises deep inside
+    # TinyModel's own forward loop (`h = out[0] if isinstance(out, tuple) else out` would then be
+    # operating on an already-wrong value, or a downstream shape/type mismatch would surface).
+    hidden_pred, logits, fit = forward_with_gate_hook(model, gate, direction, layer_idx=1, input_ids=input_ids, n_resp=3)
+    assert logits.shape == (1, 6, 200)
+    assert hidden_pred[-1].shape == (1, 6, 16), "final hidden state must still be a real tensor of the right shape, not a mis-wrapped tuple"
+
+
+def test_forward_with_gate_hook_gives_the_same_correction_regardless_of_layer_output_shape():
+    """The steering correction itself must be identical whether the underlying decoder layer
+    returns a tuple or a plain tensor -- these are two different transformers conventions for the
+    SAME semantic output, so the correction shouldn't depend on which one is in use."""
+    torch.manual_seed(11)
+    model_tuple, _ = make_fake_model_and_tokenizer(d=16, n_layers=4, layer_returns_tuple=True)
+    torch.manual_seed(11)
+    model_plain, _ = make_fake_model_and_tokenizer(d=16, n_layers=4, layer_returns_tuple=False)
+    for m in (model_tuple, model_plain):
+        for p in m.parameters():
+            p.requires_grad_(False)
+
+    gate = init_gate_state(16, "cpu")
+    direction = torch.randn(16)
+    input_ids = torch.randint(0, 200, (1, 6))
+
+    hidden_tuple, logits_tuple, _ = forward_with_gate_hook(model_tuple, gate, direction, layer_idx=1, input_ids=input_ids, n_resp=3)
+    hidden_plain, logits_plain, _ = forward_with_gate_hook(model_plain, gate, direction, layer_idx=1, input_ids=input_ids, n_resp=3)
+    assert torch.allclose(hidden_tuple[-1], hidden_plain[-1], atol=1e-5)
+    assert torch.allclose(logits_tuple, logits_plain, atol=1e-5)
+
+
 def test_response_nll_matches_manual_shifted_cross_entropy():
     """Directly checks the equation (Eq. 4: -sum_t log P(y_t | y_<t, x; h'_x)) against a manual,
     unshifted computation on tiny synthetic logits -- no fake model needed, this is pure tensor math."""

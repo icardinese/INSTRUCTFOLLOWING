@@ -1,8 +1,8 @@
 """Proper PSR training. Task-agnostic by construction: --task selects an adapter at runtime, so this
 is ONE script that runs against caveman OR ifeval, not two near-identical copies.
 
-train_one_config() holds the actual "build a gate+direction for one (layer, hyperparameter) point
-and train it" logic; main() (single run) and sweep() (grid over layer x nll_weight) are both thin
+train_one_config() holds the actual "build a gate+direction for one (layer, loss-config) point and
+train it" logic; main() (single run) and sweep() (grid over layer x loss-config) are both thin
 wrappers around it, so the two paths can never silently drift apart -- a bug fix to how a gate gets
 built only has to happen once.
 """
@@ -25,21 +25,37 @@ N_EPOCHS = 3
 LR = float(os.environ.get("PSR_PROPER_LR", 1e-3))
 WEIGHT_DECAY = 1e-4
 REG_COEFF = float(os.environ.get("PSR_PROPER_REG_COEFF", 0.1))
-# Auxiliary NLL loss weight (Eq. 4) -- 0.0 by default so every existing result reproduces
-# unchanged unless this is explicitly set. See steering/psr/nll.py and steering/psr/training_loop.py.
+# mse_weight/nll_weight are independent (see steering/psr/training_loop.py's module docstring for
+# why): mse_weight=1.0, nll_weight=0.0 is pure MSE (the default -- every existing result
+# reproduces unchanged unless these are explicitly set).
+MSE_WEIGHT = float(os.environ.get("PSR_PROPER_MSE_WEIGHT", 1.0))
 NLL_WEIGHT = float(os.environ.get("PSR_PROPER_NLL_WEIGHT", 0.0))
 # Layer grid for sweep() -- a dense range, not just DEFAULT_LAYER_FRACTIONS's 4 points, matching
 # the project's own earlier one-off "layers 2-26" sweep (see project handoff finding #4) now made
 # a permanent, reusable, resumable script instead of a one-off notebook cell.
 DEFAULT_SWEEP_LAYERS = list(range(2, 27, 2))
-DEFAULT_NLL_WEIGHT_GRID = [0.0, 0.01, 0.05, 0.1]
+# Loss configurations to sweep, as (mse_weight, nll_weight) PAIRS rather than a full cartesian
+# product of two independent grids -- most (mse_weight, nll_weight) combinations don't correspond
+# to a meaningful experiment (e.g. mse_weight=0, nll_weight=0.01 has almost no training signal at
+# all). These five points cover: pure MSE (Heyman & Vandeputte's "_MSE" variant, and this
+# project's original design), three additive MSE+NLL blends at increasing strength (this
+# project's own proposed extension -- see training_loop.py's docstring), and pure NLL (H&V's
+# "_LL" variant -- the one that was missing until this point).
+DEFAULT_LOSS_CONFIG_GRID = [
+    {"mse_weight": 1.0, "nll_weight": 0.0},   # pure MSE
+    {"mse_weight": 1.0, "nll_weight": 0.01},  # MSE + light NLL blend
+    {"mse_weight": 1.0, "nll_weight": 0.05},  # MSE + medium NLL blend
+    {"mse_weight": 1.0, "nll_weight": 0.1},   # MSE + heavy NLL blend
+    {"mse_weight": 0.0, "nll_weight": 1.0},   # pure NLL
+]
 
 
 def train_one_config(
     model, tokenizer, layer_idx: int, seed: int, n_layers: int, hidden_size: int, device: str,
     train_items: list[dict], dev_items: list[dict], train_responses: dict, dev_responses: dict,
     lr: float = LR, weight_decay: float = WEIGHT_DECAY, reg_coeff: float = REG_COEFF,
-    n_epochs: int = N_EPOCHS, nll_weight: float = NLL_WEIGHT, on_epoch_end=None,
+    n_epochs: int = N_EPOCHS, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
+    on_epoch_end=None,
 ) -> dict:
     """Builds and trains one gate+direction at one layer. Returns everything a caller might need:
     scalar dev metrics (JSON-safe, for logs/sweep rows) AND the trained tensors (NOT JSON-safe --
@@ -60,7 +76,7 @@ def train_one_config(
     baseline_metrics, final_metrics = train_gate(
         model, tokenizer, forward_fn, optimizer, layer_idx, n_layers,
         train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
-        nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
+        mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
     )
     return {
         "baseline_mse": baseline_metrics["mse"], "baseline_nll": baseline_metrics["nll"],
@@ -105,7 +121,7 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
         with (adapter.RESULTS_DIR / "psr_proper_train_log.json").open("w") as f:
             json.dump({
                 "task": task, "layer": layer_idx, "seed": seed, "lr": LR, "weight_decay": WEIGHT_DECAY,
-                "reg_coeff": REG_COEFF, "nll_weight": NLL_WEIGHT,
+                "reg_coeff": REG_COEFF, "mse_weight": MSE_WEIGHT, "nll_weight": NLL_WEIGHT,
                 "completed_epochs": N_EPOCHS if completed_epochs is None else completed_epochs,
                 "baseline_dev_mse": baseline["mse"], "baseline_dev_nll": baseline["nll"],
                 "dev_mse": final["mse"], "dev_nll": final["nll"],
@@ -131,10 +147,13 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
     )
 
 
-def sweep(task: str, layers: list[int] | None = None, nll_weight_grid: list[float] | None = None, seed: int = 42) -> None:
-    """Grid over (layer, nll_weight), resumable via core.sweep.run_grid_sweep. Writes
+def sweep(
+    task: str, layers: list[int] | None = None, loss_config_grid: list[dict] | None = None,
+    seed: int = 42,
+) -> None:
+    """Grid over (layer, loss-config), resumable via core.sweep.run_grid_sweep. Writes
     results/<task>/psr_proper_sweep.jsonl (every point's dev mse/nll) and, at the end,
-    results/<task>/psr_proper_probe.pt for the single best (layer, nll_weight) by final_mse --
+    results/<task>/psr_proper_probe.pt for the single best (layer, loss-config) by final_mse --
     i.e. this REPLACES needing to already know layer=14 up front; main()/psr_proper_probe.pt is
     exactly what the rest of the pipeline (src/generate.py) already expects, unchanged.
 
@@ -144,7 +163,7 @@ def sweep(task: str, layers: list[int] | None = None, nll_weight_grid: list[floa
     clear instruction rather than silently writing a wrong or missing checkpoint -- see the NOTE
     branch below."""
     layers = layers if layers is not None else DEFAULT_SWEEP_LAYERS
-    nll_weight_grid = nll_weight_grid if nll_weight_grid is not None else DEFAULT_NLL_WEIGHT_GRID
+    loss_config_grid = loss_config_grid if loss_config_grid is not None else DEFAULT_LOSS_CONFIG_GRID
     adapter = get_adapter(task)
     device = "cuda"
     adapter.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -165,38 +184,41 @@ def sweep(task: str, layers: list[int] | None = None, nll_weight_grid: list[floa
     def train_fn(point: dict) -> dict:
         result = train_one_config(
             model, tokenizer, point["layer"], seed, n_layers, hidden_size, device,
-            train_items, dev_items, train_responses, dev_responses, nll_weight=point["nll_weight"],
+            train_items, dev_items, train_responses, dev_responses,
+            mse_weight=point["mse_weight"], nll_weight=point["nll_weight"],
         )
-        checkpoints_by_point[(point["layer"], point["nll_weight"])] = result
-        print(f"layer={point['layer']} nll_weight={point['nll_weight']} "
+        key = (point["layer"], point["mse_weight"], point["nll_weight"])
+        checkpoints_by_point[key] = result
+        print(f"layer={point['layer']} mse_weight={point['mse_weight']} nll_weight={point['nll_weight']} "
               f"final_mse={result['final_mse']:.4f} final_nll={result['final_nll']:.4f}")
         return {k: v for k, v in result.items() if k not in ("weight", "bias", "coeff_bias", "direction")}
 
-    grid = [{"layer": l, "nll_weight": w} for l in layers for w in nll_weight_grid]
+    grid = [{"layer": l, **loss_cfg} for l in layers for loss_cfg in loss_config_grid]
     out_path = adapter.RESULTS_DIR / "psr_proper_sweep.jsonl"
-    results, best = run_grid_sweep(grid, train_fn, out_path, key_fields=["layer", "nll_weight"])
+    results, best = run_grid_sweep(grid, train_fn, out_path, key_fields=["layer", "mse_weight", "nll_weight"])
     print(f"\nwrote {len(results)} sweep rows to {out_path}")
 
     if best is None:
         print("WARNING: sweep produced no usable points -- no probe checkpoint written")
         return
-    best_key = (best["layer"], best["nll_weight"])
+    best_key = (best["layer"], best["mse_weight"], best["nll_weight"])
     if best_key not in checkpoints_by_point:
-        print(f"NOTE: best point (layer={best['layer']}, nll_weight={best['nll_weight']}) was "
-              f"already completed in a previous session, so its trained tensors aren't in memory "
-              f"this run. Delete its row from {out_path} and rerun sweep() to regenerate a "
-              f"checkpoint for it, or just call main(task, layer={best['layer']}) directly with "
-              f"PSR_PROPER_NLL_WEIGHT={best['nll_weight']}.")
+        print(f"NOTE: best point (layer={best['layer']}, mse_weight={best['mse_weight']}, "
+              f"nll_weight={best['nll_weight']}) was already completed in a previous session, so "
+              f"its trained tensors aren't in memory this run. Delete its row from {out_path} and "
+              f"rerun sweep() to regenerate a checkpoint for it, or just call "
+              f"main(task, layer={best['layer']}) directly with PSR_PROPER_MSE_WEIGHT="
+              f"{best['mse_weight']} PSR_PROPER_NLL_WEIGHT={best['nll_weight']}.")
         return
     winner = checkpoints_by_point[best_key]
     out_probe_path = adapter.RESULTS_DIR / "psr_proper_probe.pt"
     torch.save({
         "weight": winner["weight"], "bias": winner["bias"], "coeff_bias": winner["coeff_bias"],
         "direction": winner["direction"], "layer": best["layer"], "task": task,
-        "nll_weight": best["nll_weight"], "completed_epochs": N_EPOCHS,
+        "mse_weight": best["mse_weight"], "nll_weight": best["nll_weight"], "completed_epochs": N_EPOCHS,
     }, out_probe_path)
-    print(f"wrote {out_probe_path} (best layer={best['layer']}, nll_weight={best['nll_weight']}, "
-          f"final_mse={best['final_mse']:.4f})")
+    print(f"wrote {out_probe_path} (best layer={best['layer']}, mse_weight={best['mse_weight']}, "
+          f"nll_weight={best['nll_weight']}, final_mse={best['final_mse']:.4f})")
 
 
 if __name__ == "__main__":
@@ -204,13 +226,19 @@ if __name__ == "__main__":
     parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
     parser.add_argument("--layer", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--sweep", action="store_true", help="run a layer x nll_weight grid sweep instead of a single training run")
+    parser.add_argument("--sweep", action="store_true", help="run a layer x loss-config grid sweep instead of a single training run")
     parser.add_argument("--sweep-layers", type=str, default=None, help="comma-separated layer indices, e.g. 2,4,6,...,26")
-    parser.add_argument("--sweep-nll-weights", type=str, default=None, help="comma-separated nll_weight values, e.g. 0,0.01,0.1")
+    parser.add_argument("--loss-configs", type=str, default=None,
+                         help='comma-separated "mse_weight:nll_weight" pairs, e.g. "1.0:0.0,0.0:1.0" for pure-MSE + pure-NLL only')
     args = parser.parse_args()
     if args.sweep:
         layers = [int(x) for x in args.sweep_layers.split(",")] if args.sweep_layers else None
-        nll_weights = [float(x) for x in args.sweep_nll_weights.split(",")] if args.sweep_nll_weights else None
-        sweep(args.task, layers, nll_weights, args.seed)
+        loss_configs = None
+        if args.loss_configs:
+            loss_configs = []
+            for pair in args.loss_configs.split(","):
+                mse_w, nll_w = pair.split(":")
+                loss_configs.append({"mse_weight": float(mse_w), "nll_weight": float(nll_w)})
+        sweep(args.task, layers, loss_configs, args.seed)
     else:
         main(args.task, args.layer, args.seed)

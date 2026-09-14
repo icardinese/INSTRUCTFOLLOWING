@@ -9,6 +9,7 @@ suffix. Same short name, same job, genuinely different formula.
 """
 import torch
 
+from steering.hooks import rewrap_hidden, unwrap_hidden
 from steering.psr.gate import answer_only_mask, coefficient, GateState
 
 
@@ -31,17 +32,18 @@ def gate_correction(gate: GateState, conceptor: torch.Tensor, mu_instr: torch.Te
 
 def forward_with_gate_hook(model, gate: GateState, conceptor, mu_instr, delta_scale, layer_idx: int, input_ids: torch.Tensor, n_resp: int):
     """Returns (hidden_states, logits, fit_vals) -- see steering/psr/gate.py's version of this
-    function for why logits are returned now (steering/psr/nll.py's auxiliary loss)."""
+    function for why logits are returned now (steering/psr/nll.py's auxiliary loss), and for why
+    unwrap_hidden/rewrap_hidden are used instead of assuming `output` is always a tuple."""
     from core.model_common import get_decoder_layers
     layer = get_decoder_layers(model)[layer_idx]
     captured_fit = {}
 
     def wrapped(module, inputs, output):
-        hidden = output[0]
+        hidden, rest = unwrap_hidden(output)
         mask = answer_only_mask(hidden.shape[1], n_resp, hidden.device)
         correction, fit = gate_correction(gate, conceptor, mu_instr, delta_scale, hidden, mask)
         captured_fit["fit"] = fit
-        return (hidden + correction,) + tuple(output[1:])
+        return rewrap_hidden(hidden + correction, rest)
 
     handle = layer.register_forward_hook(wrapped)
     try:
