@@ -30,6 +30,8 @@ def gate_correction(gate: GateState, conceptor: torch.Tensor, mu_instr: torch.Te
 
 
 def forward_with_gate_hook(model, gate: GateState, conceptor, mu_instr, delta_scale, layer_idx: int, input_ids: torch.Tensor, n_resp: int):
+    """Returns (hidden_states, logits, fit_vals) -- see steering/psr/gate.py's version of this
+    function for why logits are returned now (steering/psr/nll.py's auxiliary loss)."""
     from core.model_common import get_decoder_layers
     layer = get_decoder_layers(model)[layer_idx]
     captured_fit = {}
@@ -46,7 +48,7 @@ def forward_with_gate_hook(model, gate: GateState, conceptor, mu_instr, delta_sc
         out = model(input_ids=input_ids, output_hidden_states=True)
     finally:
         handle.remove()
-    return out.hidden_states, captured_fit["fit"]
+    return out.hidden_states, out.logits, captured_fit["fit"]
 
 
 def make_inference_hook(gate: GateState, conceptor, mu_instr, delta_scale):

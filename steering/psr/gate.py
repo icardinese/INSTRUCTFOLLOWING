@@ -65,9 +65,14 @@ def regularization_loss(fit_vals: torch.Tensor, reg_coeff: float) -> torch.Tenso
 
 def forward_with_gate_hook(model, gate: GateState, direction: torch.Tensor, layer_idx: int, input_ids: torch.Tensor, n_resp: int):
     """Live, gradient-tracked forward pass with the gate's correction active at layer_idx. Returns
-    (hidden_states tuple, fit_vals). Routes through get_decoder_layers rather than a hardcoded
-    model.model.layers[layer_idx] -- one line change that makes every PSR variant automatically
-    architecture-portable once IFEval models come into play."""
+    (hidden_states tuple, logits, fit_vals). Routes through get_decoder_layers rather than a
+    hardcoded model.model.layers[layer_idx] -- one line change that makes every PSR variant
+    automatically architecture-portable once IFEval models come into play.
+
+    logits come from this SAME forward pass (the model call below already computes them for a
+    causal LM head) -- returning them costs nothing extra and is what steering/psr/nll.py's
+    auxiliary NLL loss needs; before this, they were silently discarded via `out.hidden_states`
+    alone."""
     layer = get_decoder_layers(model)[layer_idx]
     captured_fit = {}
 
@@ -84,7 +89,7 @@ def forward_with_gate_hook(model, gate: GateState, direction: torch.Tensor, laye
         out = model(input_ids=input_ids, output_hidden_states=True)
     finally:
         handle.remove()
-    return out.hidden_states, captured_fit["fit"]
+    return out.hidden_states, out.logits, captured_fit["fit"]
 
 
 def subsequent_layers_mse(hidden_pred, hidden_target, layer_idx: int, n_resp: int, n_layers: int) -> torch.Tensor:

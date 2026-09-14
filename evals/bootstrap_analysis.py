@@ -2,6 +2,10 @@
 The bootstrap math itself (bootstrap_ci, paired_bootstrap_diff) is unchanged from its original,
 already-verified form -- only the condition/field detection is new, generalized off SCORE_FIELDS
 instead of a hardcoded per-task condition list.
+
+collect_values_by_cond_field now also picks up avg_tokens/participation_ratio (via
+evals.summarize.collect_raw_values_by_cond_field, shared with plotting.py) -- so this file's CIs
+cover method-level metadata, not just judge score fields, without needing its own separate parsing.
 """
 import argparse
 import json
@@ -10,7 +14,7 @@ import random
 from adapters.registry import get_adapter
 from core.reproducibility import set_seed
 from evals.registry import get_eval_adapter
-from evals.summarize import parse_condition_and_field
+from evals.summarize import collect_raw_values_by_cond_field
 
 N_BOOTSTRAP = 2000
 CI_LOW, CI_HIGH = 2.5, 97.5
@@ -48,16 +52,7 @@ def paired_bootstrap_diff(values_a: list, values_b: list, n_bootstrap: int = N_B
 
 
 def collect_values_by_cond_field(rows: list[dict], score_fields: list[str]) -> dict:
-    values = {}
-    for row in rows:
-        for key, value in row.items():
-            if key == "id":
-                continue
-            parsed = parse_condition_and_field(key, score_fields)
-            if parsed:
-                cond, field = parsed
-                values.setdefault(cond, {}).setdefault(field, []).append(value)
-    return values
+    return collect_raw_values_by_cond_field(rows, score_fields)
 
 
 def main(task: str, split: str, compare: str | None, seed: int = 42) -> None:
@@ -69,10 +64,11 @@ def main(task: str, split: str, compare: str | None, seed: int = 42) -> None:
         rows = [json.loads(line) for line in f]
 
     values = collect_values_by_cond_field(rows, eval_adapter.SCORE_FIELDS)
+    display_fields = [*eval_adapter.SCORE_FIELDS, "avg_tokens", "participation_ratio"]
 
     print(f"{len(rows)} rows, 95% bootstrap CIs\n")
     for cond in sorted(values):
-        for field in eval_adapter.SCORE_FIELDS:
+        for field in display_fields:
             if field not in values[cond]:
                 continue
             point, lo, hi = bootstrap_ci(values[cond][field])
@@ -81,7 +77,7 @@ def main(task: str, split: str, compare: str | None, seed: int = 42) -> None:
     if compare:
         cond_a, cond_b = compare.split(",")
         print(f"\n--- paired comparison: {cond_a} vs {cond_b} ---")
-        for field in eval_adapter.SCORE_FIELDS:
+        for field in display_fields:
             if field not in values.get(cond_a, {}) or field not in values.get(cond_b, {}):
                 continue
             point, lo, hi = paired_bootstrap_diff(values[cond_a][field], values[cond_b][field])

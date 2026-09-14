@@ -13,6 +13,7 @@ import torch
 from steering.psr.conceptor.direction import compute_conceptor, project_direction
 from steering.psr.conceptor.matrix.logic import compute_delta_scale as matrix_delta_scale
 from steering.psr.conceptor.matrix.logic import gate_correction as matrix_gate_correction
+from steering.psr.conceptor.rank_diagnostic import participation_ratio, participation_ratio_from_eigenvalues
 from steering.psr.gate import init_gate_state
 
 
@@ -78,3 +79,43 @@ def test_selfproj_delta_shrinks_when_h_aligns_with_dominant_direction():
     delta_aligned = (h_aligned @ C - h_aligned).norm()
     delta_random = (h_random @ C - h_random).norm()
     assert delta_aligned.item() < delta_random.item()
+
+
+def test_participation_ratio_of_uniform_spectrum_equals_dimensionality():
+    """PR = (sum lambda)^2 / sum(lambda^2). For d equal eigenvalues this simplifies exactly to d --
+    the "spread evenly across every dimension" end of the scale."""
+    eigenvalues = torch.ones(8) * 0.37  # value shouldn't matter, only that they're all equal
+    pr = participation_ratio_from_eigenvalues(eigenvalues)
+    assert abs(pr - 8.0) < 1e-4
+
+
+def test_participation_ratio_of_rank_one_spectrum_equals_one():
+    """A single nonzero eigenvalue (everything else exactly zero) is the "acts like one direction"
+    end of the scale -- PR must come out to exactly 1, matching plain PSR's rank-1 correction."""
+    eigenvalues = torch.tensor([5.0, 0.0, 0.0, 0.0])
+    pr = participation_ratio_from_eigenvalues(eigenvalues)
+    assert abs(pr - 1.0) < 1e-4
+
+
+def test_participation_ratio_of_real_conceptor_is_between_one_and_dimensionality():
+    """End-to-end: build a real conceptor from real (non-degenerate) data and confirm its PR lands
+    in the theoretically valid range (1, d] rather than trusting the two synthetic-spectrum tests
+    alone to catch a wiring mistake in participation_ratio()'s matrix -> eigenvalues path."""
+    torch.manual_seed(5)
+    activations = torch.randn(100, 16) * 10
+    C = compute_conceptor(activations, alpha=4.0)
+    pr = participation_ratio(C)
+    assert 1.0 <= pr <= 16.0
+
+
+def test_participation_ratio_increases_as_aperture_widens():
+    """A larger alpha lets C attenuate less (closer to identity, see compute_conceptor's docstring),
+    which should spread its eigenvalues more evenly and raise PR -- this is the actual empirical
+    hook the project wants (\"does dimensionality increase or decrease as alpha/aperture changes\"),
+    checked in the one direction that's unambiguous from the math: alpha -> very large means C -> I,
+    whose PR is exactly d, the maximum possible -- so PR must be monotonically approaching it here."""
+    torch.manual_seed(6)
+    activations = torch.randn(100, 16) * 10
+    pr_tight = participation_ratio(compute_conceptor(activations, alpha=0.5))
+    pr_loose = participation_ratio(compute_conceptor(activations, alpha=50.0))
+    assert pr_loose > pr_tight

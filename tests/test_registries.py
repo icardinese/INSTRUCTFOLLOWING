@@ -62,5 +62,5 @@ def test_evals_registry_real_caveman_and_ifeval_judges_resolve():
     ifeval = get_eval_adapter("ifeval")
     assert callable(caveman.score_response)
     assert callable(ifeval.score_response)
-    assert caveman.SCORE_FIELDS == ["correct", "coherent"]
+    assert caveman.SCORE_FIELDS == ["correct", "coherent", "conciseness"]
     assert ifeval.SCORE_FIELDS == ["follow_all_instructions", "n_followed", "n_total"]

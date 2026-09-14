@@ -4,6 +4,11 @@ reduces to a context_fn(model) -> context manager -- the main loop below never n
 kind it's dealing with. Gracefully skips a condition if its checkpoint doesn't exist yet, so this
 file never needs editing as new methods get trained, only checkpoints need to show up.
 
+Matrix-based conditions (conceptor/matrix, conceptor/selfproj) also carry a participation_ratio
+attribute on their context_fn (set by load_matrix_condition/load_selfproj_condition) -- the main
+loop below attaches it to every row that condition produces, via getattr, so this file doesn't
+need to know which condition names are "matrix-based"; see steering/psr/conceptor/rank_diagnostic.py.
+
 Resumable at the row level, same discipline as every other long-running script in this project.
 """
 import argparse
@@ -16,6 +21,7 @@ from core.model_common import generate_response, load_model, token_count
 from steering.const.hooks import make_const_hook
 from steering.hooks import multi_steering_hook, steering_hook
 from steering.psr.conceptor.matrix.logic import make_inference_hook as matrix_inference_hook
+from steering.psr.conceptor.rank_diagnostic import participation_ratio
 from steering.psr.conceptor.selfproj.logic import make_inference_hook as selfproj_inference_hook
 from steering.psr.gate import GateState, make_inference_hook
 from steering.psr.old_baseline import MultiLayerPSRProbe, make_multi_psr_hooks
@@ -63,6 +69,16 @@ def load_matrix_condition(adapter, device):
 
     def context_fn(model):
         return steering_hook(model, layer_idx, matrix_inference_hook(gate, conceptor, mu_instr, delta_scale))
+    # Matrix-based method: C is applied fresh to every hidden state at inference, so its
+    # participation ratio is a real property of the correction actually used, not just an
+    # intermediate computation (contrast load_gate_condition's fixed-vector conceptor, which
+    # never gets this attribute -- see steering/psr/conceptor/rank_diagnostic.py's module
+    # docstring). Prefer the value already computed at train time (ckpt["participation_ratio"])
+    # over recomputing it, so generation-time numbers can never silently drift from what training
+    # actually logged; only recompute as a fallback for checkpoints trained before this existed.
+    context_fn.participation_ratio = ckpt.get("participation_ratio")
+    if context_fn.participation_ratio is None:
+        context_fn.participation_ratio = participation_ratio(ckpt["conceptor"])
     return context_fn
 
 
@@ -77,6 +93,9 @@ def load_selfproj_condition(adapter, device):
 
     def context_fn(model):
         return steering_hook(model, layer_idx, selfproj_inference_hook(gate, conceptor, delta_scale))
+    context_fn.participation_ratio = ckpt.get("participation_ratio")
+    if context_fn.participation_ratio is None:
+        context_fn.participation_ratio = participation_ratio(ckpt["conceptor"])
     return context_fn
 
 
@@ -170,6 +189,21 @@ def main(task: str, split: str) -> None:
             out_row[f"{name}_tokens"] = token_count(tokenizer, alone_resp)
             out_row[f"prompt_{name}_response"] = combined_resp
             out_row[f"prompt_{name}_tokens"] = token_count(tokenizer, combined_resp)
+
+            # Matrix-based conditions (conceptor/matrix, conceptor/selfproj) carry a
+            # participation_ratio attribute set by load_matrix_condition/load_selfproj_condition;
+            # every other condition simply doesn't have one. getattr, not a hardcoded name list,
+            # so a FUTURE matrix-based method automatically gets this for free the moment its own
+            # loader sets the same attribute -- no edit needed here (see ARCHITECTURE.md's "Adding
+            # a new steering method" guide, which this keeps true to: generate.py's main loop still
+            # never branches on method type). PR is a property of the trained checkpoint, not of
+            # this specific row's generation, so it's the same value on every row for a given
+            # condition -- redundant across rows, but that's what "embed it with the JSON output
+            # itself" asked for, and it keeps every row analyzable in isolation.
+            pr = getattr(context_fn, "participation_ratio", None)
+            if pr is not None:
+                out_row[f"{name}_participation_ratio"] = pr
+                out_row[f"prompt_{name}_participation_ratio"] = pr
 
         with out_path.open("a") as f:
             f.write(json.dumps(out_row) + "\n")
