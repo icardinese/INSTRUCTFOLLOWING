@@ -28,7 +28,8 @@ that contract explicitly and raise a clear, named error if anything is missing -
 This is *the* mechanism that makes adding a task cheap: `src/generate.py`, `evals/run_judge.py`, and
 every training script never import a task's adapter directly. They call `get_adapter(args.task)`
 and work with whatever comes back. Concretely proven this session: the exact same `evals/run_judge.py`
-code path was run against caveman's LLM-judge scoring shape (`{correct, coherent}`) and IFEval's
+code path was run against caveman's LLM-judge scoring shape (`{correct, coherent, conciseness}`)
+and IFEval's
 programmatic scoring shape (`{follow_all_instructions, n_followed, n_total}`) with zero
 special-casing needed.
 
@@ -92,12 +93,76 @@ src/generate.py                                 -> results/<task>/generations_te
 evals/run_judge.py                              -> results/<task>/judged_test.jsonl
 evals/summarize.py                              -> results/<task>/summary_test.json
 evals/bootstrap_analysis.py                     -> printed CIs, --compare for paired comparisons
+evals/plotting.py                               -> results/<task>/plots/*.png
 ```
+
+Each of proper/conceptor/conceptor-matrix/conceptor-selfproj's `train.py` ALSO exposes a `sweep()`
+function (`--sweep` on the CLI) as an alternative to a single `main()` run:
+
+```
+src/psr/proper/train.py --sweep                     -> results/<task>/psr_proper_sweep.jsonl
+src/psr/conceptor/train.py --sweep                  -> results/<task>/psr_conceptor_sweep.jsonl
+src/psr/conceptor/matrix/train.py --sweep           -> results/<task>/psr_conceptor_matrix_sweep.jsonl
+src/psr/conceptor/selfproj/train.py --sweep         -> results/<task>/psr_conceptor_selfproj_sweep.jsonl
+```
+
+Each grids over layer (+ alpha, for the conceptor variants) x nll_weight, resumable via
+`core/sweep.py`, and writes the SAME `..._probe.pt` `main()` would have -- so nothing downstream
+(`generate.py` etc.) needs to know whether a checkpoint came from a single run or the best point
+of a sweep. `evals/plotting.py`'s `plot_sweep_file` turns any of these JSONLs into a
+layer-vs-metric plot, plus a participation-ratio-vs-metric scatter for the two matrix-based
+variants (see below).
 
 `cache/<task>/` (teacher-forced responses, pooled activations) is separate from `results/<task>/`
 on purpose: cache contents are deterministic and safe to delete anytime; results are not
 guaranteed to regenerate identically (an LLM-judged sweep, for instance) and losing them is a real
 loss, not a cache miss. See `.gitignore` -- both are excluded from git, but for different reasons.
+
+## Auxiliary NLL loss and participation ratio
+
+Every gate-based PSR variant's training loop (`steering/psr/training_loop.py`) supports an
+optional auxiliary log-likelihood term (Eq. 4, Heyman & Vandeputte 2026 -- see
+`steering/psr/nll.py`), controlled by each variant's own `PSR_<VARIANT>_NLL_WEIGHT` env var
+(default `0.0`, so nothing changes unless explicitly opted into) and swept as a real hyperparameter
+axis by `sweep()`. This required every `forward_with_gate_hook` (`gate.py`,
+`conceptor/matrix/logic.py`, `conceptor/selfproj/logic.py`) to also return `logits` from the same
+corrected forward pass (free -- the model already computes them), and `train_gate` to return
+`{"mse": ..., "nll": ...}` dicts instead of a lone MSE float.
+
+Matrix-based methods (conceptor/matrix and conceptor/selfproj -- the two that apply C fresh to
+every hidden state, NOT the fixed-vector conceptor variant, whose injected correction stays
+rank-1 regardless of C) log their conceptor's participation ratio
+(`steering/psr/conceptor/rank_diagnostic.py`, PR = (sum lambda)^2 / sum(lambda^2)) at train time,
+and again at generation time: `src/generate.py` attaches it to every row for that condition via a
+`context_fn.participation_ratio` attribute, read back generically with `getattr` rather than a
+hardcoded condition-name list, so a future matrix-based method gets this for free the moment its
+own loader sets the same attribute. `evals/run_judge.py` forwards any such `{cond}_*` metadata
+field into `judged_{split}.jsonl` automatically, by key prefix -- processing condition names
+longest-first so a name like `"psr"` can't accidentally swallow `"psr_proper"`'s fields, a real
+bug caught by `tests/test_run_judge_metadata_carryover.py`. `evals/summarize.py`,
+`evals/bootstrap_analysis.py`, and `evals/plotting.py` all read this through one shared collector,
+`evals.summarize.collect_raw_values_by_cond_field`, so a future metadata field needs changes only
+in whichever `generate.py` loader sets it -- never in those three files.
+
+## Caveman conciseness score
+
+`evals/caveman/judge.py`'s `SCORE_FIELDS` is `["correct", "coherent", "conciseness"]` --
+conciseness is a THIRD, independent LLM-judged call (own rubric, own model,
+`CONCISENESS_JUDGE_MODEL = "gpt-4o"`, distinct from `JUDGE_MODEL = "gpt-4o-mini"` used for
+correct/coherent), not folded into the existing rubric or call. It exists alongside, not instead
+of, the per-row token counts every condition already gets (`{cond}_tokens`) -- the two measure
+different things: token count is a blunt proxy for terseness, conciseness is a judged score of
+whether the WORDING itself is padded (hedging, repetition, restating the question), so a response
+can be short-but-padded or long-but-tight, and this is the metric that tells those apart. Because
+this is a purely task-specific addition (the rubric only makes sense for caveman's code-explanation
+setting), it required zero changes anywhere outside `evals/caveman/judge.py` itself --
+`run_judge.py`, `summarize.py`, `bootstrap_analysis.py`, and `plotting.py` are all already generic
+over whatever `SCORE_FIELDS` a task's judge returns, which is exactly what the registry pattern
+promises ("Adding a new task" above). `evals/plotting.py`'s `plot_judged_results` does add one
+small task-aware branch: an extra compression-vs-conciseness frontier plot specifically when
+`"conciseness"` is present in `SCORE_FIELDS`, since that comparison (does the LLM-judged
+conciseness score actually track raw token count, or diverge from it) is the direct reason this
+metric exists.
 
 ## Testing
 

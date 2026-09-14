@@ -6,6 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import pytest
 import torch
 
 from steering.psr.gate import (
@@ -19,6 +20,7 @@ from steering.psr.gate import (
     regularization_loss,
     subsequent_layers_mse,
 )
+from steering.psr.nll import response_nll
 from tests.fakes import make_fake_model_and_tokenizer
 
 
@@ -61,7 +63,8 @@ def test_forward_with_gate_hook_gradient_flows_into_gate_only():
     direction = torch.randn(16)
     input_ids = torch.randint(0, 200, (1, 6))
 
-    hidden_pred, fit = forward_with_gate_hook(model, gate, direction, layer_idx=1, input_ids=input_ids, n_resp=3)
+    hidden_pred, logits, fit = forward_with_gate_hook(model, gate, direction, layer_idx=1, input_ids=input_ids, n_resp=3)
+    assert logits.shape == (1, 6, 200), "logits should be (batch, seq_len, vocab) from the same corrected forward pass"
     with torch.no_grad():
         target = model(input_ids).hidden_states
     mse = subsequent_layers_mse(hidden_pred, target, layer_idx=1, n_resp=3, n_layers=4)
@@ -88,3 +91,46 @@ def test_make_inference_hook_prefill_is_noop_generation_step_is_steered():
     expected_coeff = torch.relu(torch.tensor(16 * 0.5 + 0.1))
     expected = gen_step + expected_coeff * direction
     assert torch.allclose(out, expected, atol=1e-5)
+
+
+def test_response_nll_matches_manual_shifted_cross_entropy():
+    """Directly checks the equation (Eq. 4: -sum_t log P(y_t | y_<t, x; h'_x)) against a manual,
+    unshifted computation on tiny synthetic logits -- no fake model needed, this is pure tensor math."""
+    torch.manual_seed(4)
+    vocab, seq_len, n_resp = 10, 6, 3
+    logits = torch.randn(1, seq_len, vocab)
+    input_ids = torch.randint(0, vocab, (1, seq_len))
+
+    got = response_nll(logits, input_ids, n_resp, reduction="sum")
+
+    expected = torch.zeros(())
+    for t in range(seq_len - n_resp, seq_len):
+        log_probs = torch.log_softmax(logits[0, t - 1], dim=-1)
+        expected = expected - log_probs[input_ids[0, t]]
+    assert torch.allclose(got, expected, atol=1e-5)
+
+
+def test_response_nll_lower_for_confident_correct_predictions():
+    """A degenerate logit distribution that puts all mass on the actual target token at every
+    response position should give a near-zero NLL; a uniform distribution should give a much
+    larger one (~log(vocab) per token) -- sanity check that the loss actually measures what it
+    claims to, not just that the shapes line up."""
+    vocab, seq_len, n_resp = 20, 5, 2
+    input_ids = torch.tensor([[3, 7, 1, 9, 15]])
+
+    confident_logits = torch.full((1, seq_len, vocab), -10.0)
+    for t in range(seq_len - n_resp, seq_len):
+        confident_logits[0, t - 1, input_ids[0, t]] = 10.0
+    uniform_logits = torch.zeros(1, seq_len, vocab)
+
+    confident_nll = response_nll(confident_logits, input_ids, n_resp, reduction="sum")
+    uniform_nll = response_nll(uniform_logits, input_ids, n_resp, reduction="sum")
+    assert confident_nll.item() < 1e-3
+    assert uniform_nll.item() > n_resp * (torch.log(torch.tensor(float(vocab))).item() - 0.01)
+
+
+def test_response_nll_rejects_n_resp_larger_than_available_context():
+    logits = torch.randn(1, 4, 10)
+    input_ids = torch.randint(0, 10, (1, 4))
+    with pytest.raises(ValueError):
+        response_nll(logits, input_ids, n_resp=4, reduction="sum")
