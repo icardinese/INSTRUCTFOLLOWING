@@ -186,3 +186,29 @@ files as a pure consequence, not separate bugs.
   Verified these tests actually catch the bug -- reverted the fix locally, confirmed both new
   tests fail (with the fake-model analog of the real error), then restored the fix and confirmed
   all 82 tests pass.
+
+## Round 6: unwrap_hidden hardened, and a verification step for you
+
+Same reported error persisted after round 5's fix, byte-for-byte identical text/line, while
+S-PSR/A-PSR (no hooks) kept succeeding and the sweeps (hooks) kept failing -- that pattern most
+likely means the round-5 fix wasn't actually applied to the running checkout (only the `.sh`
+script was updated, not the Python files). **Run this before anything else**:
+
+```bash
+grep -n "unwrap_hidden" steering/hooks.py steering/psr/gate.py
+```
+
+If empty, extract this tarball over the real repo's Python files (not just `infra/*.sh`) and rerun.
+
+Made the fix itself more robust regardless, in case there's a second, subtler variant of the same
+issue: `unwrap_hidden` now checks `isinstance(output, torch.Tensor)` (the unambiguous case)
+instead of `isinstance(output, tuple)`. A tuple-only check would wrongly treat an HF
+`ModelOutput`-style object (indexable via `output[0]`/`output[1:]`, but not a literal `tuple`
+instance) as "plain tensor," returning the WHOLE container as if it were hidden_states -- a
+second path to the identical downstream crash. New `tests/test_hooks.py` (7 tests) covers plain
+tensor, tuple, list, and a fake ModelOutput-shaped object explicitly for this.
+
+Still asked for (not yet resolved): the exact "3584 / 111" error text mentioned but not pasted --
+these numbers look like Qwen2.5-7B's hidden_size (3584) and possibly a sequence length, but
+without the actual error line I can't confirm what's mismatching. Search your saved log directly
+rather than relying on terminal scrollback: `grep -n "3584" results/caveman/overnight_*.log`.
