@@ -10,6 +10,12 @@
 # This script also tees its own output to results/caveman/overnight_<timestamp>.log regardless,
 # so you have a real log to read in the morning either way.
 #
+# Loss configs swept per (layer[, alpha]) point: 5 -- pure MSE, three MSE+NLL blends, and pure
+# NLL (mse_weight=0). See src/psr/proper/train.py's DEFAULT_LOSS_CONFIG_GRID. This is ~1040 total
+# training runs across the four variants at full default grids (was ~832 before pure-NLL was
+# added) -- proper: 13 layers x 5 configs = 65; conceptor/matrix/selfproj: 13 x 5 alpha(or
+# percentile) x 5 configs = 325 each.
+#
 # What this does NOT do, on purpose:
 #   - const steering calibration (src/const/sweep.py). Picking its winning (layer, coefficient)
 #     needs a human to judge sweep_dev.jsonl -- that was true before this extension and is still
@@ -45,13 +51,17 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 # Sweep grids -- override any of these via env var if you want to shrink/expand before starting,
 # e.g. `SWEEP_LAYERS=10,14,18 bash infra/run_caveman_overnight.sh` for a quick smoke test first.
 # Defaults are each variant's own full DEFAULT_* grid (nothing passed through) -- "go all out."
+# LOSS_CONFIGS is "mse_weight:nll_weight" pairs, e.g. "1.0:0.0,0.0:1.0" for pure-MSE + pure-NLL
+# only -- the default (unset) grid is 5 points: pure MSE, three MSE+NLL blends, and pure NLL. See
+# src/psr/proper/train.py's DEFAULT_LOSS_CONFIG_GRID for why these are paired points, not two
+# independent grids (mse_weight=0 with a small nll_weight isn't a meaningful configuration).
 SWEEP_LAYERS="${SWEEP_LAYERS:-}"
 SWEEP_ALPHAS="${SWEEP_ALPHAS:-}"
-SWEEP_NLL_WEIGHTS="${SWEEP_NLL_WEIGHTS:-}"
+LOSS_CONFIGS="${LOSS_CONFIGS:-}"
 
 LAYER_ARG=(); [ -n "$SWEEP_LAYERS" ] && LAYER_ARG=(--sweep-layers "$SWEEP_LAYERS")
 ALPHA_ARG=(); [ -n "$SWEEP_ALPHAS" ] && ALPHA_ARG=(--sweep-alphas "$SWEEP_ALPHAS")
-NLL_ARG=(); [ -n "$SWEEP_NLL_WEIGHTS" ] && NLL_ARG=(--sweep-nll-weights "$SWEEP_NLL_WEIGHTS")
+LOSS_ARG=(); [ -n "$LOSS_CONFIGS" ] && LOSS_ARG=(--loss-configs "$LOSS_CONFIGS")
 
 FAILURES=()
 START_TS=$(date +%s)
@@ -117,14 +127,14 @@ run_step "A-PSR baseline (automatic multi-layer)" \
     python3 -u src/psr/old_baseline/train_a_psr.py --task "$TASK"
 
 # ---- Every trainable variant's full layer x hyperparameter sweep ----
-run_step "PSR-Proper sweep (layer x nll_weight)" \
-    python3 -u src/psr/proper/train.py --task "$TASK" --sweep "${LAYER_ARG[@]}" "${NLL_ARG[@]}"
-run_step "Conceptor fixed-vector sweep (layer x alpha x nll_weight)" \
-    python3 -u src/psr/conceptor/train.py --task "$TASK" --sweep "${LAYER_ARG[@]}" "${ALPHA_ARG[@]}" "${NLL_ARG[@]}"
-run_step "Conceptor/matrix sweep (layer x alpha x nll_weight)" \
-    python3 -u src/psr/conceptor/matrix/train.py --task "$TASK" --sweep "${LAYER_ARG[@]}" "${ALPHA_ARG[@]}" "${NLL_ARG[@]}"
-run_step "Conceptor/selfproj sweep (layer x adaptive-alpha x nll_weight)" \
-    python3 -u src/psr/conceptor/selfproj/train.py --task "$TASK" --sweep "${LAYER_ARG[@]}" "${NLL_ARG[@]}"
+run_step "PSR-Proper sweep (layer x loss-config)" \
+    python3 -u src/psr/proper/train.py --task "$TASK" --sweep "${LAYER_ARG[@]}" "${LOSS_ARG[@]}"
+run_step "Conceptor fixed-vector sweep (layer x alpha x loss-config)" \
+    python3 -u src/psr/conceptor/train.py --task "$TASK" --sweep "${LAYER_ARG[@]}" "${ALPHA_ARG[@]}" "${LOSS_ARG[@]}"
+run_step "Conceptor/matrix sweep (layer x alpha x loss-config)" \
+    python3 -u src/psr/conceptor/matrix/train.py --task "$TASK" --sweep "${LAYER_ARG[@]}" "${ALPHA_ARG[@]}" "${LOSS_ARG[@]}"
+run_step "Conceptor/selfproj sweep (layer x adaptive-alpha x loss-config)" \
+    python3 -u src/psr/conceptor/selfproj/train.py --task "$TASK" --sweep "${LAYER_ARG[@]}" "${LOSS_ARG[@]}"
 
 # ---- Generation, judging, summary, CIs ----
 run_step "generate every available condition" \

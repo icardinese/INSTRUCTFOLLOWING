@@ -11,14 +11,38 @@ from transformers import PreTrainedModel
 from core.model_common import get_decoder_layers
 
 
+def unwrap_hidden(output):
+    """A decoder layer's forward can return EITHER a plain hidden_states tensor OR a tuple whose
+    first element is hidden_states, depending on transformers version and whether cache/attention
+    outputs are requested -- confirmed as a REAL, version-dependent difference (not a hypothetical
+    one): a hook written assuming "always a tuple" silently mis-indexes a plain tensor (`output[0]`
+    on a tensor selects along the batch dimension instead of raising) and then wraps the result
+    BACK into a tuple, so the next layer receives a tuple where it expects a tensor --
+    `AttributeError: 'tuple' object has no attribute 'dtype'` deep inside the model's own forward,
+    on a transformers version that returns a plain tensor here. Returns (hidden_states, rest),
+    where `rest` is None if the original output was a plain tensor (so rewrap_hidden knows to
+    return a plain tensor back, not a 1-tuple) or the remaining tuple elements otherwise."""
+    if isinstance(output, tuple):
+        return output[0], output[1:]
+    return output, None
+
+
+def rewrap_hidden(new_hidden: torch.Tensor, rest):
+    """Inverse of unwrap_hidden -- reconstructs whatever shape the original output had (plain
+    tensor if rest is None, else a tuple with new_hidden in the first slot)."""
+    if rest is None:
+        return new_hidden
+    return (new_hidden,) + tuple(rest)
+
+
 @contextmanager
 def steering_hook(model: PreTrainedModel, layer_idx: int, hook_fn: Callable[[torch.Tensor], torch.Tensor]):
     """Registers a forward hook on decoder layer `layer_idx` that rewrites its output hidden states."""
     layer = get_decoder_layers(model)[layer_idx]
 
     def wrapped(module, inputs, output):
-        hidden = hook_fn(output[0])
-        return (hidden,) + tuple(output[1:])
+        hidden, rest = unwrap_hidden(output)
+        return rewrap_hidden(hook_fn(hidden), rest)
 
     handle = layer.register_forward_hook(wrapped)
     try:
@@ -45,8 +69,8 @@ def multi_steering_hook(model: PreTrainedModel, hooks: dict[int, Callable[[torch
             # the same loop variable `hook_fn` by reference (Python's late-binding closures), so all
             # layers would end up running whichever hook_fn was assigned LAST in the loop.
             def wrapped(module, inputs, output):
-                hidden = fn(output[0])
-                return (hidden,) + tuple(output[1:])
+                hidden, rest = unwrap_hidden(output)
+                return rewrap_hidden(fn(hidden), rest)
 
             return wrapped
 

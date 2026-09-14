@@ -123,3 +123,66 @@ will produce.
    **not** a plain foreground command you might disconnect from.
 4. In the morning: `results/caveman/plots/*.png` for the graphs, `results/caveman/overnight_*.log`
    for exactly what happened and what (if anything) failed and needs a rerun.
+
+## Round 4: mse_weight -- pure MSE and pure NLL as true mutually-exclusive alternatives
+
+Prompted by a direct question: does H&V's actual paper train MSE and loglikelihood additively, or
+as separate alternatives? Checked against the real paper (Section 3.5): **alternatives** --
+"Loglikelihood (LL). **As an alternative to MSE**..." Every results table in the paper reports
+`_MSE` or `_LL` variants, never a combined one. The additive design from round 1
+(`mse + reg + nll_weight * nll`) was faithful to *this project's own draft* ("we incorporate an
+auxiliary log-likelihood objective... integrating this into the total loss"), which is a different,
+additive proposal on top of H&V, not a replication of their ablation.
+
+- **Changed:** `steering/psr/training_loop.py` -- `train_gate` now takes an independent
+  `mse_weight` (default `1.0`) alongside `nll_weight` (default `0.0`). Loss is
+  `mse_weight * MSE + reg + nll_weight * NLL`. `mse_weight=0.0` means the MSE term contributes
+  **zero** gradient, not a small one -- verified in `tests/test_training_loop_loss_weights.py` by
+  training pure-MSE vs. pure-NLL from the same seed and confirming they diverge.
+- **Changed:** all four trainable variants -- new `PSR_<VARIANT>_MSE_WEIGHT` env var (default
+  `1.0`, so nothing changes unless set), and the flat `nll_weight` sweep grid was replaced with a
+  small set of **paired** `(mse_weight, nll_weight)` loss configurations (5 points: pure MSE,
+  three MSE+NLL blends, pure NLL) rather than a full 2D cartesian product -- most
+  `(mse_weight, nll_weight)` combinations aren't meaningful experiments (e.g. `mse_weight=0`
+  with a small `nll_weight` has almost no training signal at all). New `--loss-configs
+  "mse_weight:nll_weight,..."` CLI override on every variant's `--sweep` mode.
+- **Changed:** `infra/run_caveman_overnight.sh` -- `SWEEP_NLL_WEIGHTS` env var replaced with
+  `LOSS_CONFIGS` (same `mse_weight:nll_weight` pair format); total grid is now ~1040 runs (was
+  ~832), since every variant now sweeps 5 loss configs instead of 4.
+- No change needed in `evals/plotting.py` -- `mse_weight` is automatically picked up by
+  `discover_group_keys` as another hyperparameter to plot, same as `alpha`/`nll_weight` already
+  were, since it isn't in the fixed exclusion set. More plots per variant as a result.
+- Diagnosed a real overnight-run crash report from `steering/psr/gate.py`'s `coefficient()` --
+  traceback was truncated before the actual exception message, so the root cause is still
+  unconfirmed; flagged for the user to supply the missing final lines before restarting.
+
+## Round 5: the real overnight crash -- decoder layer output shape (transformers version compat)
+
+Root cause, confirmed from the real traceback: `AttributeError: 'tuple' object has no attribute
+'dtype'` inside Qwen2's decoder forward. This transformers version returns a decoder layer's
+output as a **plain tensor**, not the classic `(hidden_states, ...)` tuple. Every hook in this
+codebase assumed the tuple form unconditionally (`output[0]`, `tuple(output[1:])`) -- against a
+plain tensor, `output[0]` silently mis-indexes along the batch dimension instead of raising, and
+the hook then wraps the result BACK into a tuple, so the next layer receives a tuple where it
+expects a tensor. This predates this session's extension entirely (it was in the original
+`psr_refactor_v10` hook code) and could never have been caught by the existing fake-model tests,
+because the fake model only ever returned tuples too.
+
+Confirmed from the failure list: S-PSR and A-PSR actually succeeded (16 real minutes of training,
+not in the failed-steps list) -- the crash is from the sweeps, the only steps that register
+hooks; everything after that (generate/judge/summarize/bootstrap/plot) cascade-failed on missing
+files as a pure consequence, not separate bugs.
+
+- **New:** `steering/hooks.py` -- `unwrap_hidden(output)` / `rewrap_hidden(new_hidden, rest)`,
+  handling both the tuple and plain-tensor conventions. Used in `steering_hook`/
+  `multi_steering_hook` (this file) and all three `forward_with_gate_hook` implementations
+  (`steering/psr/gate.py`, `conceptor/matrix/logic.py`, `conceptor/selfproj/logic.py`).
+- **Changed:** `tests/fakes.py` -- `TinyLayer`/`TinyModel`/`make_fake_model_and_tokenizer` gained
+  a `layer_returns_tuple` flag (default `True`, so every existing test is unaffected) so the
+  plain-tensor code path is actually exercisable in tests, closing the exact blind spot that let
+  this ship in the first place.
+- **New tests**, in `tests/test_steering_psr_gate.py`: `forward_with_gate_hook` against a
+  plain-tensor-returning fake model, and a same-correction-regardless-of-output-shape check.
+  Verified these tests actually catch the bug -- reverted the fix locally, confirmed both new
+  tests fail (with the fake-model analog of the real error), then restored the fix and confirmed
+  all 82 tests pass.

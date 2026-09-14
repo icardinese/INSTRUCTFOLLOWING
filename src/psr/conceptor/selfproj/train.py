@@ -35,10 +35,20 @@ N_EPOCHS = 3
 LR = float(os.environ.get("PSR_CONCEPTOR_SELFPROJ_LR", 1e-3))
 WEIGHT_DECAY = 1e-4
 REG_COEFF = float(os.environ.get("PSR_CONCEPTOR_SELFPROJ_REG_COEFF", 0.1))
+# mse_weight/nll_weight are independent (see steering/psr/training_loop.py's module docstring).
+MSE_WEIGHT = float(os.environ.get("PSR_CONCEPTOR_SELFPROJ_MSE_WEIGHT", 1.0))
 NLL_WEIGHT = float(os.environ.get("PSR_CONCEPTOR_SELFPROJ_NLL_WEIGHT", 0.0))
 PERCENTILES = [10, 30, 50, 70, 90]
 DEFAULT_SWEEP_LAYERS = list(range(2, 27, 2))
-DEFAULT_NLL_WEIGHT_GRID = [0.0, 0.01, 0.05, 0.1]
+# See src/psr/proper/train.py's DEFAULT_LOSS_CONFIG_GRID docstring for why these are paired
+# (mse_weight, nll_weight) points rather than a full cartesian product of two independent grids.
+DEFAULT_LOSS_CONFIG_GRID = [
+    {"mse_weight": 1.0, "nll_weight": 0.0},   # pure MSE
+    {"mse_weight": 1.0, "nll_weight": 0.01},  # MSE + light NLL blend
+    {"mse_weight": 1.0, "nll_weight": 0.05},  # MSE + medium NLL blend
+    {"mse_weight": 1.0, "nll_weight": 0.1},   # MSE + heavy NLL blend
+    {"mse_weight": 0.0, "nll_weight": 1.0},   # pure NLL
+]
 
 
 def eigendecompose(pool: torch.Tensor):
@@ -66,7 +76,8 @@ def train_one_config(
     model, tokenizer, layer_idx: int, alpha: float, seed: int, n_layers: int, device: str,
     train_items: list[dict], dev_items: list[dict], train_responses: dict, dev_responses: dict,
     cache_dir, lr: float = LR, weight_decay: float = WEIGHT_DECAY, reg_coeff: float = REG_COEFF,
-    n_epochs: int = N_EPOCHS, nll_weight: float = NLL_WEIGHT, on_epoch_end=None,
+    n_epochs: int = N_EPOCHS, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
+    on_epoch_end=None,
 ) -> dict:
     """One (layer, alpha) point. Returns {"skipped": True, ...} without training anything if
     delta_scale is too small at this alpha (C indistinguishable from identity) -- same skip
@@ -93,7 +104,7 @@ def train_one_config(
     baseline_metrics, final_metrics = train_gate(
         model, tokenizer, forward_fn, optimizer, layer_idx, n_layers,
         train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
-        nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
+        mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
     )
     return {
         "skipped": False,
@@ -145,7 +156,8 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
         )
         row = {"task": task, "percentile": percentile, "alpha": alpha, "skipped": result["skipped"],
                "seed": seed, "lr": LR, "weight_decay": WEIGHT_DECAY, "reg_coeff": REG_COEFF,
-               "nll_weight": NLL_WEIGHT, "participation_ratio": result.get("participation_ratio")}
+               "mse_weight": MSE_WEIGHT, "nll_weight": NLL_WEIGHT,
+               "participation_ratio": result.get("participation_ratio")}
         if not result["skipped"]:
             row.update({"baseline_mse": result["baseline_mse"], "final_mse": result["final_mse"],
                         "baseline_nll": result["baseline_nll"], "final_nll": result["final_nll"]})
@@ -170,7 +182,8 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
             "conceptor": best["conceptor"], "delta_scale": best["delta_scale_tensor"],
             "participation_ratio": best["participation_ratio"],
             "layer": layer_idx, "task": task, "seed": seed, "lr": LR,
-            "weight_decay": WEIGHT_DECAY, "reg_coeff": REG_COEFF, "nll_weight": NLL_WEIGHT,
+            "weight_decay": WEIGHT_DECAY, "reg_coeff": REG_COEFF,
+            "mse_weight": MSE_WEIGHT, "nll_weight": NLL_WEIGHT,
         }, probe_path)
         print(f"wrote {probe_path} (best alpha={best['alpha']:.4f}, final_mse={best['final_mse']:.4f}, "
               f"participation_ratio={best['participation_ratio']:.3f})")
@@ -181,16 +194,16 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
 
 def sweep(
     task: str, layers: list[int] | None = None, percentiles: list[int] | None = None,
-    nll_weight_grid: list[float] | None = None, seed: int = 42,
+    loss_config_grid: list[dict] | None = None, seed: int = 42,
 ) -> None:
-    """Grid over (layer, alpha, nll_weight) where, for EACH layer, alpha is re-derived from that
+    """Grid over (layer, alpha, loss-config) where, for EACH layer, alpha is re-derived from that
     layer's own eigenvalue spectrum at `percentiles` (see module docstring for why alpha isn't
     shared across layers here the way it is in conceptor/matrix/train.py's sweep). See
     src/psr/proper/train.py's sweep() docstring for the resumability/best-checkpoint tradeoff this
     shares (same core.sweep.run_grid_sweep call)."""
     layers = layers if layers is not None else DEFAULT_SWEEP_LAYERS
     percentiles = percentiles if percentiles is not None else PERCENTILES
-    nll_weight_grid = nll_weight_grid if nll_weight_grid is not None else DEFAULT_NLL_WEIGHT_GRID
+    loss_config_grid = loss_config_grid if loss_config_grid is not None else DEFAULT_LOSS_CONFIG_GRID
     adapter = get_adapter(task)
     device = "cuda"
     adapter.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -206,7 +219,7 @@ def sweep(
     dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
 
     # alpha grid depends on the layer's own eigenvalue spectrum -- computed once per layer here,
-    # not once per (layer, alpha, nll_weight) grid point, since it only depends on layer.
+    # not once per (layer, alpha, loss-config) grid point, since it only depends on layer.
     alpha_by_layer_and_percentile = {}
     for layer_idx in layers:
         base_pool, instr_pool = load_or_pool_separate_poles(model, tokenizer, train_items, layer_idx, train_responses, adapter.CACHE_DIR)
@@ -221,28 +234,29 @@ def sweep(
         result = train_one_config(
             model, tokenizer, point["layer"], alpha, seed, n_layers, device,
             train_items, dev_items, train_responses, dev_responses, adapter.CACHE_DIR,
-            nll_weight=point["nll_weight"],
+            mse_weight=point["mse_weight"], nll_weight=point["nll_weight"],
         )
-        key = (point["layer"], point["percentile"], point["nll_weight"])
+        key = (point["layer"], point["percentile"], point["mse_weight"], point["nll_weight"])
         checkpoints_by_point[key] = result
         status = "SKIPPED" if result["skipped"] else f"final_mse={result['final_mse']:.4f}"
         print(f"layer={point['layer']} percentile={point['percentile']} (alpha={alpha:.4f}) "
-              f"nll_weight={point['nll_weight']}: {status} participation_ratio={result.get('participation_ratio'):.3f}")
+              f"mse_weight={point['mse_weight']} nll_weight={point['nll_weight']}: {status} "
+              f"participation_ratio={result.get('participation_ratio'):.3f}")
         out = {"alpha": alpha, "skipped": result["skipped"], "participation_ratio": result.get("participation_ratio")}
         if not result["skipped"]:
             out.update({"baseline_mse": result["baseline_mse"], "baseline_nll": result["baseline_nll"],
                         "final_mse": result["final_mse"], "final_nll": result["final_nll"]})
         return out
 
-    grid = [{"layer": l, "percentile": p, "nll_weight": w} for l in layers for p in percentiles for w in nll_weight_grid]
+    grid = [{"layer": l, "percentile": p, **loss_cfg} for l in layers for p in percentiles for loss_cfg in loss_config_grid]
     out_path = adapter.RESULTS_DIR / "psr_conceptor_selfproj_sweep.jsonl"
-    results, best = run_grid_sweep(grid, train_fn, out_path, key_fields=["layer", "percentile", "nll_weight"])
+    results, best = run_grid_sweep(grid, train_fn, out_path, key_fields=["layer", "percentile", "mse_weight", "nll_weight"])
     print(f"\nwrote {len(results)} sweep rows to {out_path}")
 
     if best is None:
         print("WARNING: sweep produced no usable (non-skipped) points -- no probe checkpoint written")
         return
-    best_key = (best["layer"], best["percentile"], best["nll_weight"])
+    best_key = (best["layer"], best["percentile"], best["mse_weight"], best["nll_weight"])
     if best_key not in checkpoints_by_point:
         print(f"NOTE: best point {best_key} was already completed in a previous session -- its "
               f"trained tensors aren't in memory this run. Delete its row from {out_path} and "
@@ -254,11 +268,12 @@ def sweep(
         "weight": winner["weight"], "bias": winner["bias"], "coeff_bias": winner["coeff_bias"],
         "conceptor": winner["conceptor"], "delta_scale": winner["delta_scale_tensor"],
         "participation_ratio": winner["participation_ratio"],
-        "layer": best["layer"], "alpha": best["alpha"], "nll_weight": best["nll_weight"],
+        "layer": best["layer"], "alpha": best["alpha"],
+        "mse_weight": best["mse_weight"], "nll_weight": best["nll_weight"],
         "task": task, "seed": seed,
     }, out_probe_path)
     print(f"wrote {out_probe_path} (best layer={best['layer']}, alpha={best['alpha']:.4f}, "
-          f"nll_weight={best['nll_weight']}, final_mse={best['final_mse']:.4f})")
+          f"mse_weight={best['mse_weight']}, nll_weight={best['nll_weight']}, final_mse={best['final_mse']:.4f})")
 
 
 if __name__ == "__main__":
@@ -266,13 +281,19 @@ if __name__ == "__main__":
     parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
     parser.add_argument("--layer", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--sweep", action="store_true", help="sweep layer x adaptive-alpha x nll_weight instead of a single-layer alpha sweep")
+    parser.add_argument("--sweep", action="store_true", help="sweep layer x adaptive-alpha x loss-config instead of a single-layer alpha sweep")
     parser.add_argument("--sweep-layers", type=str, default=None)
-    parser.add_argument("--sweep-nll-weights", type=str, default=None)
+    parser.add_argument("--loss-configs", type=str, default=None,
+                         help='comma-separated "mse_weight:nll_weight" pairs, e.g. "1.0:0.0,0.0:1.0"')
     args = parser.parse_args()
     if args.sweep:
         layers = [int(x) for x in args.sweep_layers.split(",")] if args.sweep_layers else None
-        nll_weights = [float(x) for x in args.sweep_nll_weights.split(",")] if args.sweep_nll_weights else None
-        sweep(args.task, layers, None, nll_weights, args.seed)
+        loss_configs = None
+        if args.loss_configs:
+            loss_configs = []
+            for pair in args.loss_configs.split(","):
+                mse_w, nll_w = pair.split(":")
+                loss_configs.append({"mse_weight": float(mse_w), "nll_weight": float(nll_w)})
+        sweep(args.task, layers, None, loss_configs, args.seed)
     else:
         main(args.task, args.layer, args.seed)

@@ -34,16 +34,19 @@ Caveman only. In order:
    itself being swept this round).
 3. A-PSR baseline (automatic, its own multi-layer set, no layer argument needed).
 4. **Every trainable variant's full sweep**, using each script's full default grid (nothing
-   throttled):
-   - PSR-Proper: 13 layers (2 to 26, step 2) x 4 `nll_weight` values = 52 training runs.
-   - Conceptor (fixed-vector): 13 layers x 5 `alpha` values x 4 `nll_weight` values = 260 runs.
-   - Conceptor/matrix: same grid = 260 runs.
-   - Conceptor/selfproj: 13 layers x 5 adaptive-alpha percentiles x 4 `nll_weight` values = 260
-     runs (alpha itself is re-derived from each layer's own eigenvalue spectrum, not shared).
-   - **~832 individual training runs total.** I can't tell you exactly how long this takes on your
-     GPU without knowing your dataset size and hardware -- that's the actual meaning of "10-12
-     hours, idc" you gave me room for. If it's running long and you want to check on it without
-     stopping it, `tmux attach -t overnight` or `tail -f results/caveman/overnight_*.log`.
+   throttled). Each (layer[, alpha]) point now runs **5 loss configurations**, not 4: pure MSE,
+   three MSE+NLL blends, and pure NLL (`mse_weight=0`) -- see `src/psr/proper/train.py`'s
+   `DEFAULT_LOSS_CONFIG_GRID` for exactly which, and why they're paired points rather than a full
+   `mse_weight x nll_weight` cartesian grid.
+   - PSR-Proper: 13 layers (2 to 26, step 2) x 5 loss configs = 65 training runs.
+   - Conceptor (fixed-vector): 13 layers x 5 `alpha` values x 5 loss configs = 325 runs.
+   - Conceptor/matrix: same grid = 325 runs.
+   - Conceptor/selfproj: 13 layers x 5 adaptive-alpha percentiles x 5 loss configs = 325 runs
+     (alpha itself is re-derived from each layer's own eigenvalue spectrum, not shared).
+   - **~1040 individual training runs total.** I can't tell you exactly how long this takes on
+     your GPU without knowing your dataset size and hardware -- that's the actual meaning of
+     "10-12 hours, idc" you gave me room for. If it's running long and you want to check on it
+     without stopping it, `tmux attach -t overnight` or `tail -f results/caveman/overnight_*.log`.
 5. Generate every available condition's responses (`src/generate.py`).
 6. Judge every response -- correctness + coherence + conciseness (`evals/run_judge.py`).
 7. Summarize + bootstrap 95% CIs (`evals/summarize.py`, `evals/bootstrap_analysis.py`).
@@ -74,12 +77,13 @@ already-completed grid points are skipped automatically.
 ## Shrinking the grid for a quick smoke test first
 
 If you want to sanity-check the whole pipeline end-to-end on a tiny grid before committing to the
-full ~832-run night:
+full ~1040-run night:
 
 ```bash
-SWEEP_LAYERS=10,14,18 SWEEP_ALPHAS=2,8 SWEEP_NLL_WEIGHTS=0,0.1 bash infra/run_caveman_overnight.sh
+SWEEP_LAYERS=10,14,18 SWEEP_ALPHAS=2,8 LOSS_CONFIGS=1.0:0.0,0.0:1.0 bash infra/run_caveman_overnight.sh
 ```
 
-This overrides the layer/alpha/nll_weight grids for every variant's sweep in one shot (3 layers x
-2 alphas x 2 nll_weights = 12 runs per conceptor variant, 6 for proper) without touching the
-script itself.
+This overrides the layer/alpha/loss-config grids for every variant's sweep in one shot (3 layers x
+2 alphas x 2 loss-configs = 12 runs per conceptor variant, 6 for proper) without touching the
+script itself. `LOSS_CONFIGS` is `"mse_weight:nll_weight"` pairs -- the example above runs only
+pure MSE and pure NLL, skipping the three blended points, for the fastest possible smoke test.
