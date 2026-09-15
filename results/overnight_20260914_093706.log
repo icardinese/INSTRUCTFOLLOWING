@@ -1,0 +1,514 @@
+################################################################
+# Overnight caveman run starting at Mon Sep 14 09:37:06 AM UTC 2026
+# Log: results/caveman/overnight_20260914_093706.log
+################################################################
+
+== pre-flight checks ==
+openai.key: found
+CUDA: available
+core dependencies: importable
+pre-flight checks passed -- proceeding.
+
+== [2026-09-14 09:37:18] START: S-PSR baseline (layer=14) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]Fetching 4 files:  25%|██▌       | 1/4 [00:16<00:48, 16.21s/it]Fetching 4 files:  50%|█████     | 2/4 [00:42<00:43, 21.95s/it]Fetching 4 files:  75%|███████▌  | 3/4 [00:50<00:15, 15.82s/it]Fetching 4 files: 100%|██████████| 4/4 [01:41<00:00, 29.51s/it]Fetching 4 files: 100%|██████████| 4/4 [01:41<00:00, 25.30s/it]
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   1%|          | 2/339 [00:00<00:45,  7.33it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:18, 17.99it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:06, 47.17it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:04, 64.15it/s]Loading weights:  12%|█▏        | 42/339 [00:00<00:03, 74.74it/s]Loading weights:  16%|█▌        | 54/339 [00:00<00:03, 81.52it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 86.33it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:02, 88.44it/s]Loading weights:  26%|██▌       | 88/339 [00:01<00:02, 85.89it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 93.82it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 94.67it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 95.18it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 95.32it/s]Loading weights:  44%|████▍     | 150/339 [00:01<00:01, 95.02it/s]Loading weights:  47%|████▋     | 161/339 [00:02<00:01, 91.79it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.18it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 95.14it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.53it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.85it/s]Loading weights:  65%|██████▌   | 221/339 [00:02<00:01, 93.22it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 96.54it/s]Loading weights:  72%|███████▏  | 245/339 [00:02<00:01, 93.77it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.97it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.81it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.60it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.66it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 96.58it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.38it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 96.31it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 89.63it/s]
+collecting fixed (x, y) pairs at layer 14 (offline, injection-layer only)
+n_train_pairs=10924, n_dev_pairs=2917
+baseline_dev_mse=0.1127
+epoch=50 train_loss=0.0740
+epoch=100 train_loss=0.0737
+epoch=150 train_loss=0.0736
+epoch=200 train_loss=0.0735
+final_dev_mse=0.0696 (baseline was 0.1127)
+wrote results/caveman/psr_probe.pt
+== [2026-09-14 09:47:44] OK: S-PSR baseline (layer=14) ==
+
+== [2026-09-14 09:47:44] START: A-PSR baseline (automatic multi-layer) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:17,  1.71it/s]Loading weights:   5%|▍         | 16/339 [00:00<00:11, 29.27it/s]Loading weights:   8%|▊         | 28/339 [00:00<00:06, 45.70it/s]Loading weights:  12%|█▏        | 40/339 [00:00<00:05, 58.69it/s]Loading weights:  15%|█▌        | 51/339 [00:01<00:04, 61.60it/s]Loading weights:  19%|█▉        | 64/339 [00:01<00:03, 72.61it/s]Loading weights:  23%|██▎       | 77/339 [00:01<00:03, 80.79it/s]Loading weights:  26%|██▋       | 89/339 [00:01<00:02, 84.69it/s]Loading weights:  30%|██▉       | 101/339 [00:01<00:02, 87.60it/s]Loading weights:  33%|███▎      | 113/339 [00:01<00:02, 89.15it/s]Loading weights:  37%|███▋      | 125/339 [00:01<00:02, 91.12it/s]Loading weights:  40%|████      | 137/339 [00:02<00:02, 92.63it/s]Loading weights:  44%|████▍     | 149/339 [00:02<00:02, 86.15it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 91.11it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 92.44it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 92.92it/s]Loading weights:  58%|█████▊    | 196/339 [00:02<00:01, 88.57it/s]Loading weights:  62%|██████▏   | 209/339 [00:02<00:01, 92.57it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 95.02it/s]Loading weights:  68%|██████▊   | 232/339 [00:03<00:01, 90.11it/s]Loading weights:  72%|███████▏  | 245/339 [00:03<00:01, 93.86it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.51it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.00it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 95.88it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 95.43it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 95.57it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 95.58it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 95.35it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 82.86it/s]
+candidate layers: [7, 14, 18, 22]
+collecting fixed (x, y) pairs at every candidate layer (offline, one pass per row)
+baseline_dev_mse=0.6618
+epoch=50 train_loss=1.7188
+epoch=100 train_loss=1.7043
+epoch=150 train_loss=1.7006
+epoch=200 train_loss=1.6989
+final_dev_mse=0.4260 (baseline was 0.6618)
+wrote results/caveman/a_psr_probe.pt
+== [2026-09-14 09:48:22] OK: A-PSR baseline (automatic multi-layer) ==
+
+== [2026-09-14 09:48:22] START: PSR-Proper sweep (layer x loss-config) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:05,  1.82it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.51it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 33.37it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:06, 50.01it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 62.57it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 71.74it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 78.06it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 82.76it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 85.77it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 88.56it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 89.79it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 91.29it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 91.97it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:02, 92.37it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 92.92it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 93.54it/s]Loading weights:  55%|█████▍    | 185/339 [00:02<00:01, 91.38it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 94.90it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.00it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 94.54it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 94.39it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 94.70it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 94.79it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 94.29it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 94.45it/s]Loading weights:  86%|████████▋ | 293/339 [00:03<00:00, 92.07it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 95.61it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 95.27it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 94.26it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 82.27it/s]
+layer=2 mse_weight=1.0 nll_weight=0.0 final_mse=7.7611 final_nll=36.4892
+layer=2 mse_weight=1.0 nll_weight=0.01 final_mse=7.7620 final_nll=36.3641
+layer=2 mse_weight=1.0 nll_weight=0.05 final_mse=7.7712 final_nll=35.9184
+layer=2 mse_weight=1.0 nll_weight=0.1 final_mse=7.8193 final_nll=35.5254
+layer=2 mse_weight=0.0 nll_weight=1.0 final_mse=24.3443 final_nll=32.1311
+layer=4 mse_weight=1.0 nll_weight=0.0 final_mse=7.2187 final_nll=36.2409
+layer=4 mse_weight=1.0 nll_weight=0.01 final_mse=7.2237 final_nll=36.1185
+layer=4 mse_weight=1.0 nll_weight=0.05 final_mse=7.2370 final_nll=35.6507
+layer=4 mse_weight=1.0 nll_weight=0.1 final_mse=7.2954 final_nll=35.3164
+layer=4 mse_weight=0.0 nll_weight=1.0 final_mse=26.3056 final_nll=31.7072
+layer=6 mse_weight=1.0 nll_weight=0.0 final_mse=6.9482 final_nll=36.0267
+layer=6 mse_weight=1.0 nll_weight=0.01 final_mse=6.9567 final_nll=35.8736
+layer=6 mse_weight=1.0 nll_weight=0.05 final_mse=6.9961 final_nll=35.5134
+layer=6 mse_weight=1.0 nll_weight=0.1 final_mse=7.0668 final_nll=35.2138
+layer=6 mse_weight=0.0 nll_weight=1.0 final_mse=25.3523 final_nll=31.2777
+layer=8 mse_weight=1.0 nll_weight=0.0 final_mse=6.6514 final_nll=36.0797
+layer=8 mse_weight=1.0 nll_weight=0.01 final_mse=6.6490 final_nll=35.9879
+layer=8 mse_weight=1.0 nll_weight=0.05 final_mse=6.6855 final_nll=35.5965
+layer=8 mse_weight=1.0 nll_weight=0.1 final_mse=6.7652 final_nll=35.2910
+layer=8 mse_weight=0.0 nll_weight=1.0 final_mse=26.2920 final_nll=31.1220
+layer=10 mse_weight=1.0 nll_weight=0.0 final_mse=6.3531 final_nll=35.9112
+layer=10 mse_weight=1.0 nll_weight=0.01 final_mse=6.3555 final_nll=35.8064
+layer=10 mse_weight=1.0 nll_weight=0.05 final_mse=6.3895 final_nll=35.4480
+layer=10 mse_weight=1.0 nll_weight=0.1 final_mse=6.4567 final_nll=35.0386
+layer=10 mse_weight=0.0 nll_weight=1.0 final_mse=27.1096 final_nll=31.3611
+layer=12 mse_weight=1.0 nll_weight=0.0 final_mse=5.9688 final_nll=35.8443
+layer=12 mse_weight=1.0 nll_weight=0.01 final_mse=5.9765 final_nll=35.7097
+layer=12 mse_weight=1.0 nll_weight=0.05 final_mse=6.0052 final_nll=35.3157
+layer=12 mse_weight=1.0 nll_weight=0.1 final_mse=6.0566 final_nll=34.8693
+layer=12 mse_weight=0.0 nll_weight=1.0 final_mse=26.0332 final_nll=31.0911
+layer=14 mse_weight=1.0 nll_weight=0.0 final_mse=5.6983 final_nll=36.0222
+layer=14 mse_weight=1.0 nll_weight=0.01 final_mse=5.6947 final_nll=35.9051
+layer=14 mse_weight=1.0 nll_weight=0.05 final_mse=5.7067 final_nll=35.4224
+layer=14 mse_weight=1.0 nll_weight=0.1 final_mse=5.7542 final_nll=34.9945
+layer=14 mse_weight=0.0 nll_weight=1.0 final_mse=25.5392 final_nll=31.1319
+layer=16 mse_weight=1.0 nll_weight=0.0 final_mse=6.0822 final_nll=36.4706
+layer=16 mse_weight=1.0 nll_weight=0.01 final_mse=6.0893 final_nll=36.3035
+layer=16 mse_weight=1.0 nll_weight=0.05 final_mse=6.1486 final_nll=35.8838
+layer=16 mse_weight=1.0 nll_weight=0.1 final_mse=6.2546 final_nll=35.5791
+layer=16 mse_weight=0.0 nll_weight=1.0 final_mse=26.5435 final_nll=32.4251
+layer=18 mse_weight=1.0 nll_weight=0.0 final_mse=8.1890 final_nll=38.1408
+layer=18 mse_weight=1.0 nll_weight=0.01 final_mse=8.1862 final_nll=38.0032
+layer=18 mse_weight=1.0 nll_weight=0.05 final_mse=8.2009 final_nll=37.4678
+layer=18 mse_weight=1.0 nll_weight=0.1 final_mse=8.2587 final_nll=36.9903
+layer=18 mse_weight=0.0 nll_weight=1.0 final_mse=31.3261 final_nll=34.2884
+layer=20 mse_weight=1.0 nll_weight=0.0 final_mse=13.0124 final_nll=41.4232
+layer=20 mse_weight=1.0 nll_weight=0.01 final_mse=13.0137 final_nll=41.2769
+layer=20 mse_weight=1.0 nll_weight=0.05 final_mse=13.0362 final_nll=40.8428
+layer=20 mse_weight=1.0 nll_weight=0.1 final_mse=13.0946 final_nll=40.4285
+layer=20 mse_weight=0.0 nll_weight=1.0 final_mse=45.9114 final_nll=38.9953
+layer=22 mse_weight=1.0 nll_weight=0.0 final_mse=16.2189 final_nll=46.6152
+layer=22 mse_weight=1.0 nll_weight=0.01 final_mse=16.2204 final_nll=46.4278
+layer=22 mse_weight=1.0 nll_weight=0.05 final_mse=16.2395 final_nll=45.8313
+layer=22 mse_weight=1.0 nll_weight=0.1 final_mse=16.2889 final_nll=45.2155
+layer=22 mse_weight=0.0 nll_weight=1.0 final_mse=55.6531 final_nll=40.1472
+layer=24 mse_weight=1.0 nll_weight=0.0 final_mse=15.8754 final_nll=50.4282
+layer=24 mse_weight=1.0 nll_weight=0.01 final_mse=15.8747 final_nll=50.1719
+layer=24 mse_weight=1.0 nll_weight=0.05 final_mse=15.8986 final_nll=49.2474
+layer=24 mse_weight=1.0 nll_weight=0.1 final_mse=15.9683 final_nll=48.3215
+layer=24 mse_weight=0.0 nll_weight=1.0 final_mse=53.8412 final_nll=42.5723
+layer=26 mse_weight=1.0 nll_weight=0.0 final_mse=10.2737 final_nll=53.1429
+layer=26 mse_weight=1.0 nll_weight=0.01 final_mse=10.2922 final_nll=48.8387
+layer=26 mse_weight=1.0 nll_weight=0.05 final_mse=10.3746 final_nll=46.6070
+layer=26 mse_weight=1.0 nll_weight=0.1 final_mse=10.4566 final_nll=46.0242
+layer=26 mse_weight=0.0 nll_weight=1.0 final_mse=12.5988 final_nll=45.1742
+
+wrote 65 sweep rows to results/caveman/psr_proper_sweep.jsonl
+wrote results/caveman/psr_proper_probe.pt (best layer=14, mse_weight=1.0, nll_weight=0.01, final_mse=5.6947)
+== [2026-09-14 11:16:01] OK: PSR-Proper sweep (layer x loss-config) ==
+
+== [2026-09-14 11:16:01] START: Conceptor fixed-vector sweep (layer x alpha x loss-config) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:23,  4.04it/s]Loading weights:   1%|          | 2/339 [00:00<01:32,  3.65it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 11.90it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 36.16it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 53.46it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 65.84it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 74.63it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 79.88it/s]Loading weights:  23%|██▎       | 77/339 [00:01<00:03, 80.62it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 86.13it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 89.07it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 90.43it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 92.19it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 93.44it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:02, 94.35it/s]Loading weights:  47%|████▋     | 161/339 [00:02<00:01, 92.37it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.70it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 95.90it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 96.10it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 96.13it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.07it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.06it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.31it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.32it/s]Loading weights:  79%|███████▉  | 269/339 [00:03<00:00, 93.68it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 97.02it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.90it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 96.96it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 97.03it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.81it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.45it/s]
+Traceback (most recent call last):
+  File "/root/INSTRUCTFOLLOWING/src/psr/conceptor/train.py", line 237, in <module>
+    sweep(args.task, layers, alphas, loss_configs, args.seed)
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/src/psr/conceptor/train.py", line 192, in sweep
+    results, best = run_grid_sweep(grid, train_fn, out_path, key_fields=["layer", "alpha", "mse_weight", "nll_weight"])
+                    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/core/sweep.py", line 74, in run_grid_sweep
+    result = {**point, **train_fn(point)}
+                         ~~~~~~~~^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/src/psr/conceptor/train.py", line 179, in train_fn
+    result = train_one_config(
+        model, tokenizer, point["layer"], point["alpha"], seed, n_layers, device,
+        train_items, dev_items, train_responses, dev_responses, adapter.CACHE_DIR,
+        mse_weight=point["mse_weight"], nll_weight=point["nll_weight"],
+    )
+  File "/root/INSTRUCTFOLLOWING/src/psr/conceptor/train.py", line 76, in train_one_config
+    baseline_metrics, final_metrics = train_gate(
+                                      ~~~~~~~~~~^
+        model, tokenizer, forward_fn, optimizer, layer_idx, n_layers,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/root/INSTRUCTFOLLOWING/steering/psr/training_loop.py", line 68, in train_gate
+    baseline_metrics = eval_dev_metrics(model, tokenizer, forward_fn, layer_idx, n_layers, dev_items, dev_responses)
+  File "/usr/local/lib/python3.13/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "/root/INSTRUCTFOLLOWING/steering/psr/training_loop.py", line 48, in eval_dev_metrics
+    pred, logits, _ = forward_fn(pair)
+                      ~~~~~~~~~~^^^^^^
+  File "/root/INSTRUCTFOLLOWING/src/psr/conceptor/train.py", line 73, in <lambda>
+    forward_fn = lambda pair: forward_with_gate_hook(model, gate, direction, layer_idx, pair["full_base"], pair["n_resp"])
+                              ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/steering/psr/gate.py", line 96, in forward_with_gate_hook
+    out = model(input_ids=input_ids, output_hidden_states=True)
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/utils/generic.py", line 939, in wrapper
+    output = func(self, *args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/models/qwen2/modeling_qwen2.py", line 452, in forward
+    outputs: BaseModelOutputWithPast = self.model(
+                                       ~~~~~~~~~~^
+        input_ids=input_ids,
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+        **kwargs,
+        ^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/utils/generic.py", line 1068, in wrapper
+    output = func(self, *args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/utils/output_capturing.py", line 262, in wrapper
+    outputs = func(self, *args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/models/qwen2/modeling_qwen2.py", line 388, in forward
+    hidden_states = decoder_layer(
+        hidden_states,
+    ...<5 lines>...
+        **kwargs,
+    )
+  File "/usr/local/lib/python3.13/dist-packages/transformers/modeling_layers.py", line 114, in __call__
+    return super().__call__(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1885, in _call_impl
+    return inner()
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1846, in inner
+    hook_result = hook(self, args, result)
+  File "/root/INSTRUCTFOLLOWING/steering/psr/gate.py", line 90, in wrapped
+    correction = (coeff * direction.to(hidden.dtype)).to(hidden.dtype)
+                  ~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!
+== [2026-09-14 11:16:34] FAILED (continuing anyway): Conceptor fixed-vector sweep (layer x alpha x loss-config) ==
+
+== [2026-09-14 11:16:34] START: Conceptor/matrix sweep (layer x alpha x loss-config) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:23,  4.05it/s]Loading weights:   1%|          | 2/339 [00:00<01:31,  3.69it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 12.04it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 36.75it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 54.40it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 66.80it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 75.51it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 81.76it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 86.08it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 89.20it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 91.46it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 93.27it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 94.41it/s]Loading weights:  40%|████      | 137/339 [00:02<00:02, 92.77it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 96.27it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 96.51it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 96.87it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 96.79it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 96.68it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 96.63it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.39it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.56it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.69it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.89it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.87it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 97.10it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 97.07it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 97.26it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.98it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 97.14it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 84.64it/s]
+layer=2 alpha=1.0 delta_scale=18.47 participation_ratio=810.970
+Traceback (most recent call last):
+  File "/root/INSTRUCTFOLLOWING/src/psr/conceptor/matrix/train.py", line 241, in <module>
+    sweep(args.task, layers, alphas, loss_configs, args.seed)
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/src/psr/conceptor/matrix/train.py", line 196, in sweep
+    results, best = run_grid_sweep(grid, train_fn, out_path, key_fields=["layer", "alpha", "mse_weight", "nll_weight"])
+                    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/core/sweep.py", line 74, in run_grid_sweep
+    result = {**point, **train_fn(point)}
+                         ~~~~~~~~^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/src/psr/conceptor/matrix/train.py", line 181, in train_fn
+    result = train_one_config(
+        model, tokenizer, point["layer"], point["alpha"], seed, n_layers, device,
+        train_items, dev_items, train_responses, dev_responses, adapter.CACHE_DIR,
+        mse_weight=point["mse_weight"], nll_weight=point["nll_weight"],
+    )
+  File "/root/INSTRUCTFOLLOWING/src/psr/conceptor/matrix/train.py", line 72, in train_one_config
+    baseline_metrics, final_metrics = train_gate(
+                                      ~~~~~~~~~~^
+        model, tokenizer, forward_fn, optimizer, layer_idx, n_layers,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/root/INSTRUCTFOLLOWING/steering/psr/training_loop.py", line 68, in train_gate
+    baseline_metrics = eval_dev_metrics(model, tokenizer, forward_fn, layer_idx, n_layers, dev_items, dev_responses)
+  File "/usr/local/lib/python3.13/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "/root/INSTRUCTFOLLOWING/steering/psr/training_loop.py", line 48, in eval_dev_metrics
+    pred, logits, _ = forward_fn(pair)
+                      ~~~~~~~~~~^^^^^^
+  File "/root/INSTRUCTFOLLOWING/src/psr/conceptor/matrix/train.py", line 69, in <lambda>
+    forward_fn = lambda pair: forward_with_gate_hook(model, gate, conceptor, mu_instr, delta_scale, layer_idx, pair["full_base"], pair["n_resp"])
+                              ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/steering/psr/conceptor/matrix/logic.py", line 50, in forward_with_gate_hook
+    out = model(input_ids=input_ids, output_hidden_states=True)
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/utils/generic.py", line 939, in wrapper
+    output = func(self, *args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/models/qwen2/modeling_qwen2.py", line 452, in forward
+    outputs: BaseModelOutputWithPast = self.model(
+                                       ~~~~~~~~~~^
+        input_ids=input_ids,
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+        **kwargs,
+        ^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/utils/generic.py", line 1068, in wrapper
+    output = func(self, *args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/utils/output_capturing.py", line 262, in wrapper
+    outputs = func(self, *args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/models/qwen2/modeling_qwen2.py", line 388, in forward
+    hidden_states = decoder_layer(
+        hidden_states,
+    ...<5 lines>...
+        **kwargs,
+    )
+  File "/usr/local/lib/python3.13/dist-packages/transformers/modeling_layers.py", line 114, in __call__
+    return super().__call__(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1885, in _call_impl
+    return inner()
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1846, in inner
+    hook_result = hook(self, args, result)
+  File "/root/INSTRUCTFOLLOWING/steering/psr/conceptor/matrix/logic.py", line 44, in wrapped
+    correction, fit = gate_correction(gate, conceptor, mu_instr, delta_scale, hidden, mask)
+                      ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/steering/psr/conceptor/matrix/logic.py", line 28, in gate_correction
+    delta = mu_instr.to(hidden.dtype) - hidden
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~
+RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!
+== [2026-09-14 11:16:54] FAILED (continuing anyway): Conceptor/matrix sweep (layer x alpha x loss-config) ==
+
+== [2026-09-14 11:16:54] START: Conceptor/selfproj sweep (layer x adaptive-alpha x loss-config) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:00,  1.87it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.83it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 34.62it/s]Loading weights:   9%|▊         | 29/339 [00:00<00:06, 49.43it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 64.46it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 73.59it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 79.99it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 84.58it/s]Loading weights:  26%|██▌       | 88/339 [00:01<00:03, 83.05it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 91.63it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.82it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 94.02it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 94.74it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 95.33it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 95.27it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 96.04it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 96.29it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 96.09it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 96.27it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.51it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.34it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.48it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 95.90it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 95.97it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.11it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.26it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 96.38it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.44it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.78it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 84.17it/s]
+Traceback (most recent call last):
+  File "/root/INSTRUCTFOLLOWING/src/psr/conceptor/selfproj/train.py", line 297, in <module>
+    sweep(args.task, layers, None, loss_configs, args.seed)
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/src/psr/conceptor/selfproj/train.py", line 253, in sweep
+    results, best = run_grid_sweep(grid, train_fn, out_path, key_fields=["layer", "percentile", "mse_weight", "nll_weight"])
+                    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/core/sweep.py", line 74, in run_grid_sweep
+    result = {**point, **train_fn(point)}
+                         ~~~~~~~~^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/src/psr/conceptor/selfproj/train.py", line 234, in train_fn
+    result = train_one_config(
+        model, tokenizer, point["layer"], alpha, seed, n_layers, device,
+        train_items, dev_items, train_responses, dev_responses, adapter.CACHE_DIR,
+        mse_weight=point["mse_weight"], nll_weight=point["nll_weight"],
+    )
+  File "/root/INSTRUCTFOLLOWING/src/psr/conceptor/selfproj/train.py", line 104, in train_one_config
+    baseline_metrics, final_metrics = train_gate(
+                                      ~~~~~~~~~~^
+        model, tokenizer, forward_fn, optimizer, layer_idx, n_layers,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/root/INSTRUCTFOLLOWING/steering/psr/training_loop.py", line 68, in train_gate
+    baseline_metrics = eval_dev_metrics(model, tokenizer, forward_fn, layer_idx, n_layers, dev_items, dev_responses)
+  File "/usr/local/lib/python3.13/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "/root/INSTRUCTFOLLOWING/steering/psr/training_loop.py", line 48, in eval_dev_metrics
+    pred, logits, _ = forward_fn(pair)
+                      ~~~~~~~~~~^^^^^^
+  File "/root/INSTRUCTFOLLOWING/src/psr/conceptor/selfproj/train.py", line 101, in <lambda>
+    forward_fn = lambda pair: forward_with_gate_hook(model, gate, conceptor, delta_scale, layer_idx, pair["full_base"], pair["n_resp"])
+                              ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/steering/psr/conceptor/selfproj/logic.py", line 47, in forward_with_gate_hook
+    out = model(input_ids=input_ids, output_hidden_states=True)
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/utils/generic.py", line 939, in wrapper
+    output = func(self, *args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/models/qwen2/modeling_qwen2.py", line 452, in forward
+    outputs: BaseModelOutputWithPast = self.model(
+                                       ~~~~~~~~~~^
+        input_ids=input_ids,
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+        **kwargs,
+        ^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/utils/generic.py", line 1068, in wrapper
+    output = func(self, *args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/utils/output_capturing.py", line 262, in wrapper
+    outputs = func(self, *args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/transformers/models/qwen2/modeling_qwen2.py", line 388, in forward
+    hidden_states = decoder_layer(
+        hidden_states,
+    ...<5 lines>...
+        **kwargs,
+    )
+  File "/usr/local/lib/python3.13/dist-packages/transformers/modeling_layers.py", line 114, in __call__
+    return super().__call__(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1885, in _call_impl
+    return inner()
+  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1846, in inner
+    hook_result = hook(self, args, result)
+  File "/root/INSTRUCTFOLLOWING/steering/psr/conceptor/selfproj/logic.py", line 41, in wrapped
+    correction, fit = gate_correction(gate, conceptor, delta_scale, hidden, mask)
+                      ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/steering/psr/conceptor/selfproj/logic.py", line 25, in gate_correction
+    c_h = hidden.float() @ conceptor.to(hidden.dtype).float()
+          ~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+RuntimeError: Expected all tensors to be on the same device, but got mat2 is on cpu, different from other tensors on cuda:0 (when checking argument in method wrapper_CUDA_mm)
+== [2026-09-14 11:20:42] FAILED (continuing anyway): Conceptor/selfproj sweep (layer x adaptive-alpha x loss-config) ==
+
+== [2026-09-14 11:20:42] START: generate every available condition ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:04,  1.83it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.58it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 34.08it/s]Loading weights:   8%|▊         | 28/339 [00:00<00:06, 46.71it/s]Loading weights:  12%|█▏        | 41/339 [00:01<00:04, 62.91it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 74.59it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 80.84it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 84.23it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 87.53it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 90.13it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 91.80it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 93.05it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 94.03it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 94.55it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 95.32it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.77it/s]Loading weights:  55%|█████▍    | 185/339 [00:02<00:01, 93.88it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 96.81it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 96.82it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.85it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.86it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.99it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.61it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.54it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.79it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.97it/s]Loading weights:  90%|████████▉ | 305/339 [00:03<00:00, 94.44it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 97.64it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 97.39it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.97it/s]
+available steered conditions: ['psr_proper', 'psr', 'a_psr'] (missing checkpoints are skipped, not errors -- rerun once they exist)
+10/180 done this session
+20/180 done this session
+30/180 done this session
+40/180 done this session
+50/180 done this session
+60/180 done this session
+70/180 done this session
+80/180 done this session
+90/180 done this session
+100/180 done this session
+110/180 done this session
+120/180 done this session
+130/180 done this session
+140/180 done this session
+150/180 done this session
+160/180 done this session
+170/180 done this session
+180/180 done this session
+done. results/caveman/generations_test.jsonl now has 180/180 rows
+== [2026-09-14 12:35:00] OK: generate every available condition ==
+
+== [2026-09-14 12:35:00] START: judge every generated response (correctness + coherence + conciseness) ==
+10/180 judged
+20/180 judged
+30/180 judged
+40/180 judged
+50/180 judged
+60/180 judged
+70/180 judged
+80/180 judged
+90/180 judged
+100/180 judged
+110/180 judged
+120/180 judged
+130/180 judged
+140/180 judged
+150/180 judged
+160/180 judged
+170/180 judged
+180/180 judged
+wrote 180 rows to results/caveman/judged_test.jsonl
+== [2026-09-14 13:16:09] OK: judge every generated response (correctness + coherence + conciseness) ==
+
+== [2026-09-14 13:16:09] START: summarize ==
+condition                             avg_tokens             correct            coherent         conciseness participation_ratio
+a_psr                                    148.644               1.939               1.000               0.994                 nan
+base                                     149.933               1.961               1.000               0.928                 nan
+prompt                                    57.200               1.939               1.000               1.322                 nan
+prompt_a_psr                              28.161               1.594               1.000               1.894                 nan
+prompt_psr                                48.622               1.917               1.000               1.511                 nan
+prompt_psr_proper                         37.311               1.822               1.000               1.756                 nan
+psr                                      149.878               1.956               1.000               0.944                 nan
+psr_proper                               100.828               1.961               1.000               1.000                 nan
+
+wrote results/caveman/summary_test.json
+== [2026-09-14 13:16:13] OK: summarize ==
+
+== [2026-09-14 13:16:13] START: bootstrap 95% CIs ==
+180 rows, 95% bootstrap CIs
+
+a_psr                       correct                      1.939  [1.900, 1.972]
+a_psr                       coherent                     1.000  [1.000, 1.000]
+a_psr                       conciseness                  0.994  [0.983, 1.000]
+a_psr                       avg_tokens                 148.644  [146.817, 149.833]
+base                        correct                      1.961  [1.928, 1.989]
+base                        coherent                     1.000  [1.000, 1.000]
+base                        conciseness                  0.928  [0.889, 0.961]
+base                        avg_tokens                 149.933  [149.883, 149.972]
+prompt                      correct                      1.939  [1.900, 1.972]
+prompt                      coherent                     1.000  [1.000, 1.000]
+prompt                      conciseness                  1.322  [1.256, 1.394]
+prompt                      avg_tokens                  57.200  [53.289, 61.150]
+prompt_a_psr                correct                      1.594  [1.522, 1.667]
+prompt_a_psr                coherent                     1.000  [1.000, 1.000]
+prompt_a_psr                conciseness                  1.894  [1.850, 1.939]
+prompt_a_psr                avg_tokens                  28.161  [26.439, 30.078]
+prompt_psr                  correct                      1.917  [1.872, 1.956]
+prompt_psr                  coherent                     1.000  [1.000, 1.000]
+prompt_psr                  conciseness                  1.511  [1.439, 1.583]
+prompt_psr                  avg_tokens                  48.622  [45.306, 52.400]
+prompt_psr_proper           correct                      1.822  [1.761, 1.878]
+prompt_psr_proper           coherent                     1.000  [1.000, 1.000]
+prompt_psr_proper           conciseness                  1.756  [1.694, 1.817]
+prompt_psr_proper           avg_tokens                  37.311  [35.078, 39.778]
+psr                         correct                      1.956  [1.928, 1.983]
+psr                         coherent                     1.000  [1.000, 1.000]
+psr                         conciseness                  0.944  [0.911, 0.978]
+psr                         avg_tokens                 149.878  [149.778, 149.950]
+psr_proper                  correct                      1.961  [1.933, 1.989]
+psr_proper                  coherent                     1.000  [1.000, 1.000]
+psr_proper                  conciseness                  1.000  [1.000, 1.000]
+psr_proper                  avg_tokens                 100.828  [96.022, 106.061]
+== [2026-09-14 13:16:24] OK: bootstrap 95% CIs ==
+
+== [2026-09-14 13:16:24] START: plot everything ==
+
+11 plot(s) written:
+  results/caveman/plots/score_comparison_correct.png
+  results/caveman/plots/score_comparison_coherent.png
+  results/caveman/plots/score_comparison_conciseness.png
+  results/caveman/plots/compression_quality_frontier_correct.png
+  results/caveman/plots/compression_quality_frontier_conciseness.png
+  results/caveman/plots/psr_proper_sweep_final_mse_by_layer.png
+  results/caveman/plots/psr_proper_sweep_final_mse_by_layer_grouped_mse_weight.png
+  results/caveman/plots/psr_proper_sweep_final_mse_by_layer_grouped_nll_weight.png
+  results/caveman/plots/psr_proper_sweep_final_nll_by_layer.png
+  results/caveman/plots/psr_proper_sweep_final_nll_by_layer_grouped_mse_weight.png
+  results/caveman/plots/psr_proper_sweep_final_nll_by_layer_grouped_nll_weight.png
+== [2026-09-14 13:16:40] OK: plot everything ==
+
+################################################################
+# DONE at Mon Sep 14 01:16:40 PM UTC 2026. Elapsed: 3h 39m
+# Plots written: 11  (in results/caveman/plots/)
+# Sweep files:   1
+# 3 step(s) failed (everything else still ran and is usable):
+#   - Conceptor fixed-vector sweep (layer x alpha x loss-config)
+#   - Conceptor/matrix sweep (layer x alpha x loss-config)
+#   - Conceptor/selfproj sweep (layer x adaptive-alpha x loss-config)
+# Full log: results/caveman/overnight_20260914_093706.log
+################################################################
