@@ -149,7 +149,7 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
 
 def sweep(
     task: str, layers: list[int] | None = None, loss_config_grid: list[dict] | None = None,
-    seed: int = 42,
+    seed: int = 42, device: str = "cuda",
 ) -> None:
     """Grid over (layer, loss-config), resumable via core.sweep.run_grid_sweep. Writes
     results/<task>/psr_proper_sweep.jsonl (every point's dev mse/nll) and, at the end,
@@ -157,15 +157,14 @@ def sweep(
     i.e. this REPLACES needing to already know layer=14 up front; main()/psr_proper_probe.pt is
     exactly what the rest of the pipeline (src/generate.py) already expects, unchanged.
 
-    Tradeoff, stated plainly: the winning checkpoint's tensors are only available to save if that
-    grid point was actually (re)trained THIS session. If the sweep is resumed across a restart and
-    the eventual winner was one of the already-completed (skipped-on-resume) points, this prints a
-    clear instruction rather than silently writing a wrong or missing checkpoint -- see the NOTE
-    branch below."""
+    If the sweep is resumed across a restart and the eventual winner turns out to be one of the
+    already-completed (skipped-on-resume) points, its tensors are regenerated with one more cheap
+    retrain rather than leaving no checkpoint behind -- see the else branch below. Confirmed
+    against a real overnight run where this exact situation happened (see
+    tests/test_sweep_resume_winner_fix.py)."""
     layers = layers if layers is not None else DEFAULT_SWEEP_LAYERS
     loss_config_grid = loss_config_grid if loss_config_grid is not None else DEFAULT_LOSS_CONFIG_GRID
     adapter = get_adapter(task)
-    device = "cuda"
     adapter.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     adapter.CACHE_DIR.mkdir(parents=True, exist_ok=True)
     model, tokenizer = load_model(device, model_name=adapter.MODEL_NAME)
@@ -202,15 +201,17 @@ def sweep(
         print("WARNING: sweep produced no usable points -- no probe checkpoint written")
         return
     best_key = (best["layer"], best["mse_weight"], best["nll_weight"])
-    if best_key not in checkpoints_by_point:
-        print(f"NOTE: best point (layer={best['layer']}, mse_weight={best['mse_weight']}, "
-              f"nll_weight={best['nll_weight']}) was already completed in a previous session, so "
-              f"its trained tensors aren't in memory this run. Delete its row from {out_path} and "
-              f"rerun sweep() to regenerate a checkpoint for it, or just call "
-              f"main(task, layer={best['layer']}) directly with PSR_PROPER_MSE_WEIGHT="
-              f"{best['mse_weight']} PSR_PROPER_NLL_WEIGHT={best['nll_weight']}.")
-        return
-    winner = checkpoints_by_point[best_key]
+    if best_key in checkpoints_by_point:
+        winner = checkpoints_by_point[best_key]
+    else:
+        # See src/psr/conceptor/matrix/train.py's sweep() for why this retrains rather than bails:
+        # the winner may have been completed in an earlier (resumed) session.
+        print(f"Best point {best_key} was completed in an earlier session -- retraining it once more.")
+        winner = train_one_config(
+            model, tokenizer, best["layer"], seed, n_layers, hidden_size, device,
+            train_items, dev_items, train_responses, dev_responses,
+            mse_weight=best["mse_weight"], nll_weight=best["nll_weight"],
+        )
     out_probe_path = adapter.RESULTS_DIR / "psr_proper_probe.pt"
     torch.save({
         "weight": winner["weight"], "bias": winner["bias"], "coeff_bias": winner["coeff_bias"],

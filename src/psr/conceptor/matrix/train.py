@@ -57,6 +57,11 @@ def train_one_config(
 ) -> dict:
     set_seed(seed)
     base_pool, instr_pool = load_or_pool_separate_poles(model, tokenizer, train_items, layer_idx, train_responses, cache_dir)
+    # See src/psr/conceptor/train.py's train_one_config for why this .to(device) is necessary --
+    # pool_separate_poles deliberately returns CPU tensors, and everything derived from them
+    # (conceptor, mu_instr, delta_scale) needs to be on the live model's device before being
+    # combined with real (CUDA) hidden states inside the hook.
+    base_pool, instr_pool = base_pool.to(device), instr_pool.to(device)
     conceptor = compute_conceptor(torch.cat([base_pool, instr_pool], dim=0), alpha=alpha)
     mu_instr = instr_pool.mean(dim=0)
     delta_scale = compute_delta_scale(conceptor, mu_instr, base_pool)
@@ -151,7 +156,7 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
 
 def sweep(
     task: str, layers: list[int] | None = None, alpha_grid: list[float] | None = None,
-    loss_config_grid: list[dict] | None = None, seed: int = 42,
+    loss_config_grid: list[dict] | None = None, seed: int = 42, device: str = "cuda",
 ) -> None:
     """Grid over (layer, alpha, loss-config). Every row in the resulting sweep JSONL carries
     participation_ratio alongside final_mse -- this is the cheap, dense dataset the project wants
@@ -162,7 +167,6 @@ def sweep(
     alpha_grid = alpha_grid if alpha_grid is not None else DEFAULT_ALPHA_GRID
     loss_config_grid = loss_config_grid if loss_config_grid is not None else DEFAULT_LOSS_CONFIG_GRID
     adapter = get_adapter(task)
-    device = "cuda"
     adapter.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     adapter.CACHE_DIR.mkdir(parents=True, exist_ok=True)
     model, tokenizer = load_model(device, model_name=adapter.MODEL_NAME)
@@ -200,12 +204,22 @@ def sweep(
         print("WARNING: sweep produced no usable points -- no probe checkpoint written")
         return
     best_key = (best["layer"], best["alpha"], best["mse_weight"], best["nll_weight"])
-    if best_key not in checkpoints_by_point:
-        print(f"NOTE: best point {best_key} was already completed in a previous session -- its "
-              f"trained tensors aren't in memory this run. Delete its row from {out_path} and "
-              f"rerun sweep() to regenerate a checkpoint for it.")
-        return
-    winner = checkpoints_by_point[best_key]
+    if best_key in checkpoints_by_point:
+        winner = checkpoints_by_point[best_key]
+    else:
+        # The overall winner was completed in an EARLIER session (this run only retrained
+        # whatever was still missing on resume) -- rather than bailing with nothing saved, just
+        # retrain this ONE point again to get its tensors. Cheap: pooled activations are cached,
+        # so this costs one training run, not a repool. Without this, a sweep that's 99% resumed
+        # (like tonight's) would finish, correctly identify its own winner, and then throw that
+        # information away instead of producing the checkpoint generate.py actually needs.
+        print(f"Best point {best_key} was completed in an earlier session -- retraining it once "
+              f"more to obtain its checkpoint tensors (cheap: pooling is cached).")
+        winner = train_one_config(
+            model, tokenizer, best["layer"], best["alpha"], seed, n_layers, device,
+            train_items, dev_items, train_responses, dev_responses, adapter.CACHE_DIR,
+            mse_weight=best["mse_weight"], nll_weight=best["nll_weight"],
+        )
     out_probe_path = adapter.RESULTS_DIR / "psr_conceptor_matrix_probe.pt"
     torch.save({
         "weight": winner["weight"], "bias": winner["bias"], "coeff_bias": winner["coeff_bias"],

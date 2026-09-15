@@ -84,6 +84,12 @@ def train_one_config(
     condition the original percentile loop used, now reusable from sweep() too."""
     set_seed(seed)
     base_pool, instr_pool = load_or_pool_separate_poles(model, tokenizer, train_items, layer_idx, train_responses, cache_dir)
+    # See src/psr/conceptor/train.py's train_one_config for why this .to(device) is necessary --
+    # pool_separate_poles deliberately returns CPU tensors; identity below already correctly
+    # derives its device FROM pool (torch.eye(..., device=pool.device, ...)), so moving pool to
+    # the live device here is the one thing needed for that existing device-matching to actually
+    # point at CUDA instead of CPU.
+    base_pool, instr_pool = base_pool.to(device), instr_pool.to(device)
     pool = torch.cat([base_pool, instr_pool], dim=0)
     hidden_size = pool.shape[1]
     identity = torch.eye(hidden_size, device=pool.device, dtype=pool.dtype)
@@ -194,7 +200,7 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
 
 def sweep(
     task: str, layers: list[int] | None = None, percentiles: list[int] | None = None,
-    loss_config_grid: list[dict] | None = None, seed: int = 42,
+    loss_config_grid: list[dict] | None = None, seed: int = 42, device: str = "cuda",
 ) -> None:
     """Grid over (layer, alpha, loss-config) where, for EACH layer, alpha is re-derived from that
     layer's own eigenvalue spectrum at `percentiles` (see module docstring for why alpha isn't
@@ -205,7 +211,6 @@ def sweep(
     percentiles = percentiles if percentiles is not None else PERCENTILES
     loss_config_grid = loss_config_grid if loss_config_grid is not None else DEFAULT_LOSS_CONFIG_GRID
     adapter = get_adapter(task)
-    device = "cuda"
     adapter.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     adapter.CACHE_DIR.mkdir(parents=True, exist_ok=True)
     model, tokenizer = load_model(device, model_name=adapter.MODEL_NAME)
@@ -257,12 +262,20 @@ def sweep(
         print("WARNING: sweep produced no usable (non-skipped) points -- no probe checkpoint written")
         return
     best_key = (best["layer"], best["percentile"], best["mse_weight"], best["nll_weight"])
-    if best_key not in checkpoints_by_point:
-        print(f"NOTE: best point {best_key} was already completed in a previous session -- its "
-              f"trained tensors aren't in memory this run. Delete its row from {out_path} and "
-              f"rerun sweep() to regenerate a checkpoint for it.")
-        return
-    winner = checkpoints_by_point[best_key]
+    if best_key in checkpoints_by_point:
+        winner = checkpoints_by_point[best_key]
+    else:
+        # See src/psr/conceptor/matrix/train.py's sweep() for why this retrains rather than bails.
+        # best["alpha"] is the row's own already-recorded alpha value (derived from that layer's
+        # spectrum when this point first ran) -- reused directly rather than re-deriving it, so
+        # the retrained point is trained at EXACTLY the same alpha, not a freshly-recomputed one
+        # that could differ slightly if the cached pool changed at all.
+        print(f"Best point {best_key} was completed in an earlier session -- retraining it once more.")
+        winner = train_one_config(
+            model, tokenizer, best["layer"], best["alpha"], seed, n_layers, device,
+            train_items, dev_items, train_responses, dev_responses, adapter.CACHE_DIR,
+            mse_weight=best["mse_weight"], nll_weight=best["nll_weight"],
+        )
     out_probe_path = adapter.RESULTS_DIR / "psr_conceptor_selfproj_probe.pt"
     torch.save({
         "weight": winner["weight"], "bias": winner["bias"], "coeff_bias": winner["coeff_bias"],

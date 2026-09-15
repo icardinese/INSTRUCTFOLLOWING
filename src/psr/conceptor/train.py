@@ -61,6 +61,13 @@ def train_one_config(
     the same split and why)."""
     set_seed(seed)
     base_pool, instr_pool = load_or_pool_separate_poles(model, tokenizer, train_items, layer_idx, train_responses, cache_dir)
+    # pool_separate_poles deliberately keeps pooled activations on CPU (saves GPU memory while
+    # accumulating across many training items) -- everything DERIVED from them (diff_mean_direction,
+    # conceptor, direction) must be moved to the live model's device explicitly, or the correction
+    # ends up on CPU while hidden states are on CUDA: a real, confirmed crash ("Expected all tensors
+    # to be on the same device, but found at least two devices, cuda:0 and cpu!") the .to(hidden.dtype)
+    # calls in gate.py's hook don't fix, since changing dtype doesn't change device.
+    base_pool, instr_pool = base_pool.to(device), instr_pool.to(device)
     diff_mean_direction = instr_pool.mean(0) - base_pool.mean(0)
     diff_mean_direction = diff_mean_direction / diff_mean_direction.norm()
 
@@ -152,7 +159,7 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
 
 def sweep(
     task: str, layers: list[int] | None = None, alpha_grid: list[float] | None = None,
-    loss_config_grid: list[dict] | None = None, seed: int = 42,
+    loss_config_grid: list[dict] | None = None, seed: int = 42, device: str = "cuda",
 ) -> None:
     """Grid over (layer, alpha, loss-config). See src/psr/proper/train.py's sweep() docstring for
     the resumability/best-checkpoint tradeoff this shares (same core.sweep.run_grid_sweep call)."""
@@ -160,7 +167,6 @@ def sweep(
     alpha_grid = alpha_grid if alpha_grid is not None else DEFAULT_ALPHA_GRID
     loss_config_grid = loss_config_grid if loss_config_grid is not None else DEFAULT_LOSS_CONFIG_GRID
     adapter = get_adapter(task)
-    device = "cuda"
     adapter.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     adapter.CACHE_DIR.mkdir(parents=True, exist_ok=True)
     model, tokenizer = load_model(device, model_name=adapter.MODEL_NAME)
@@ -196,12 +202,16 @@ def sweep(
         print("WARNING: sweep produced no usable points -- no probe checkpoint written")
         return
     best_key = (best["layer"], best["alpha"], best["mse_weight"], best["nll_weight"])
-    if best_key not in checkpoints_by_point:
-        print(f"NOTE: best point {best_key} was already completed in a previous session -- its "
-              f"trained tensors aren't in memory this run. Delete its row from {out_path} and "
-              f"rerun sweep() to regenerate a checkpoint for it.")
-        return
-    winner = checkpoints_by_point[best_key]
+    if best_key in checkpoints_by_point:
+        winner = checkpoints_by_point[best_key]
+    else:
+        # See src/psr/conceptor/matrix/train.py's sweep() for why this retrains rather than bails.
+        print(f"Best point {best_key} was completed in an earlier session -- retraining it once more.")
+        winner = train_one_config(
+            model, tokenizer, best["layer"], best["alpha"], seed, n_layers, device,
+            train_items, dev_items, train_responses, dev_responses, adapter.CACHE_DIR,
+            mse_weight=best["mse_weight"], nll_weight=best["nll_weight"],
+        )
     out_probe_path = adapter.RESULTS_DIR / "psr_conceptor_probe.pt"
     torch.save({
         "weight": winner["weight"], "bias": winner["bias"], "coeff_bias": winner["coeff_bias"],
