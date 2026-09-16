@@ -1,0 +1,8 @@
+################################################################
+# Layer/hyperparameter search starting at Wed Sep 16 04:00:51 AM UTC 2026
+# Task=caveman  variants=[proper conceptor conceptor_matrix conceptor_selfproj]  tier1_n=20 tier2_n=20 final_n=180 top_k=3
+# Log: results/caveman/layer_search_20260916_040051.log
+################################################################
+
+== pre-flight checks ==
+PRE-FLIGHT FAILURE: openai.key not found -- every judged evaluation in every tier needs it.

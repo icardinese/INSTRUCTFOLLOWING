@@ -33,11 +33,14 @@ LOG_FILE="$RESULTS_DIR/layer_search_${TIMESTAMP}.log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 # Overridable, same pattern as the sweep script's env vars -- e.g. TIER1_N=10 for a faster,
-# lower-power smoke test before committing to the default budget.
+# lower-power smoke test before committing to the default budget. MAX_BATCH_ROWS caps how many
+# (candidate x prompt) rows go into one generate() call -- lower it if you see a CUDA OOM (this
+# happened for real once already, see evals/layer_hparam_search.py's DEFAULT_MAX_BATCH_ROWS).
 TIER1_N="${TIER1_N:-20}"
 TIER2_N="${TIER2_N:-20}"
 FINAL_N="${FINAL_N:-180}"
 TOP_K_LAYERS="${TOP_K_LAYERS:-3}"
+MAX_BATCH_ROWS="${MAX_BATCH_ROWS:-60}"
 VARIANTS="${VARIANTS:-proper conceptor conceptor_matrix conceptor_selfproj}"
 
 FAILURES=()
@@ -57,7 +60,7 @@ run_step() {
 
 echo "################################################################"
 echo "# Layer/hyperparameter search starting at $(date)"
-echo "# Task=$TASK  variants=[$VARIANTS]  tier1_n=$TIER1_N tier2_n=$TIER2_N final_n=$FINAL_N top_k=$TOP_K_LAYERS"
+echo "# Task=$TASK  variants=[$VARIANTS]  tier1_n=$TIER1_N tier2_n=$TIER2_N final_n=$FINAL_N top_k=$TOP_K_LAYERS max_batch_rows=$MAX_BATCH_ROWS"
 echo "# Log: $LOG_FILE"
 echo "################################################################"
 
@@ -105,7 +108,8 @@ echo "pre-flight checks passed -- proceeding."
 for v in $VARIANTS; do
     run_step "layer/hyperparameter search: $v" \
         python3 -u evals/layer_hparam_search.py --task "$TASK" --variant "$v" \
-            --tier1-n "$TIER1_N" --tier2-n "$TIER2_N" --final-n "$FINAL_N" --top-k-layers "$TOP_K_LAYERS"
+            --tier1-n "$TIER1_N" --tier2-n "$TIER2_N" --final-n "$FINAL_N" --top-k-layers "$TOP_K_LAYERS" \
+            --max-batch-rows "$MAX_BATCH_ROWS"
 done
 
 echo ""

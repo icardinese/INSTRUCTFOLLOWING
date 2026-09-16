@@ -25,6 +25,7 @@ import argparse
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import torch
 
@@ -40,6 +41,35 @@ DEFAULT_TIER1_N = 20
 DEFAULT_TIER2_N = 20
 DEFAULT_FINAL_N = 180
 DEFAULT_TOP_K_LAYERS = 3
+# Rows (candidates x prompts) allowed in one generate_with_routed_configs call. Batching
+# heterogeneous configs together is mathematically exact (see BATCHED_STEERING.md) -- but nothing
+# bounds how much GPU memory ONE call needs, and MLP intermediate activations scale with
+# batch_size x seq_len. Confirmed by a REAL CUDA OOM on Qwen2.5-7B-Instruct at 300 rows (15
+# hyperparameter combos x 20 prompts, one Tier 2 call) on an 80GB A100. This caps it by splitting
+# into multiple sequential batched calls instead -- still batches as much as fits at once, just
+# not an unbounded amount. 60 is a conservative starting point, not a measured ceiling; lower it
+# if you still see OOMs, raise it if you want to verify more headroom is actually available.
+DEFAULT_MAX_BATCH_ROWS = 60
+
+
+def _chunk_groups_by_row_budget(prompts_by_group: dict[Any, list[str]], max_rows: int) -> list[list[Any]]:
+    """Greedily packs group_ids into chunks whose total prompt-row count stays under max_rows.
+    A single group bigger than max_rows on its own (e.g. Final's one config x 180 prompts) still
+    gets its own chunk -- that's no worse than every pre-batching call already was, not a
+    regression, just not further reducible."""
+    chunks: list[list[Any]] = []
+    current_chunk: list[Any] = []
+    current_size = 0
+    for group_id, prompts in prompts_by_group.items():
+        size = len(prompts)
+        if current_chunk and current_size + size > max_rows:
+            chunks.append(current_chunk)
+            current_chunk, current_size = [], 0
+        current_chunk.append(group_id)
+        current_size += size
+    if current_chunk:
+        chunks.append(current_chunk)
+    return chunks
 
 
 @dataclass
@@ -151,10 +181,14 @@ def evaluate_candidates(
     eval_adapter,
     n_examples: int,
     split: str = "dev",
+    max_batch_rows: int = DEFAULT_MAX_BATCH_ROWS,
 ) -> list[dict]:
-    """Retrains every candidate, batches ALL of them into as few generate() calls as one batch can
-    hold (grouped by layer internally by generate_with_routed_configs), judges n_examples real
-    responses per candidate, and returns each candidate augmented with judged_score/ci_lo/ci_hi.
+    """Retrains every candidate, then batches them into generate_with_routed_configs calls --
+    as many candidates per call as fit within max_batch_rows total prompt-rows, chunked into
+    multiple sequential calls if there are more than that (see DEFAULT_MAX_BATCH_ROWS's docstring
+    for why this cap exists -- it's a fix for a real OOM, not a hypothetical precaution). Judges
+    n_examples real responses per candidate, returns each candidate augmented with
+    judged_score/ci_lo/ci_hi.
 
     candidates: each a dict with at least {"layer", "mse_weight", "nll_weight"} and whatever
     else that variant's retrain function needs (e.g. "alpha"). Usually rows pulled straight from
@@ -166,20 +200,27 @@ def evaluate_candidates(
     prompts = [item["base_prompt"] for item in items]
 
     hook_fns_by_group, layer_by_group, prompts_by_group = {}, {}, {}
-    skipped_candidates = []
     for i, candidate in enumerate(candidates):
         group_id = i
         hook_fn = retrain_fn(candidate, ctx)
-        if hook_fn is None:
-            skipped_candidates.append(candidate)
-            continue
-        hook_fns_by_group[group_id] = hook_fn
-        layer_by_group[group_id] = candidate["layer"]
         prompts_by_group[group_id] = prompts
+        layer_by_group[group_id] = candidate["layer"]
+        if hook_fn is not None:
+            hook_fns_by_group[group_id] = hook_fn
+        # A None hook_fn (e.g. selfproj's delta_scale-too-small skip) still gets a prompts/layer
+        # entry so it occupies a slot in chunking math, but generate_with_routed_configs treats a
+        # group missing from hook_fns_by_group as "no correction" -- see below, its response is
+        # discarded rather than judged, since "no correction" isn't what this candidate meant.
+        if hook_fn is None:
+            del prompts_by_group[group_id]  # don't waste batch rows generating something we'll discard
 
-    responses_by_group = generate_with_routed_configs(
-        ctx.model, ctx.tokenizer, prompts_by_group, hook_fns_by_group, layer_by_group,
-    )
+    responses_by_group: dict[int, list[str]] = {}
+    for chunk_group_ids in _chunk_groups_by_row_budget(prompts_by_group, max_batch_rows):
+        chunk_prompts = {g: prompts_by_group[g] for g in chunk_group_ids}
+        chunk_hooks = {g: hook_fns_by_group[g] for g in chunk_group_ids if g in hook_fns_by_group}
+        chunk_layers = {g: layer_by_group[g] for g in chunk_group_ids}
+        chunk_responses = generate_with_routed_configs(ctx.model, ctx.tokenizer, chunk_prompts, chunk_hooks, chunk_layers)
+        responses_by_group.update(chunk_responses)
 
     primary_field = eval_adapter.SCORE_FIELDS[0]
     results = []
@@ -217,6 +258,7 @@ def run_tiered_search(
     final_n: int = DEFAULT_FINAL_N,
     top_k_layers: int = DEFAULT_TOP_K_LAYERS,
     seed: int = 42,
+    max_batch_rows: int = DEFAULT_MAX_BATCH_ROWS,
 ) -> None:
     adapter = get_adapter(task)
     eval_adapter = get_eval_adapter(task)
@@ -264,7 +306,7 @@ def run_tiered_search(
         print(f"== Tier 1: layer sweep, n={tier1_n}, real judged evaluation decides survivors ==")
         tier1_candidates = list(best_row_per_layer(sweep_rows).values())
         print(f"{len(tier1_candidates)} layers to evaluate (MSE-best hyperparameter combo per layer)")
-        tier1_results = evaluate_candidates(variant, tier1_candidates, ctx, adapter, eval_adapter, tier1_n, split="dev")
+        tier1_results = evaluate_candidates(variant, tier1_candidates, ctx, adapter, eval_adapter, tier1_n, split="dev", max_batch_rows=max_batch_rows)
         write("tier1", tier1_results)
 
     survivors = sorted((r for r in tier1_results if not r["skipped"]), key=lambda r: -r["judged_score"])[:top_k_layers]
@@ -281,7 +323,7 @@ def run_tiered_search(
         survivor_layers = {s["layer"] for s in survivors}
         tier2_candidates = [r for r in sweep_rows if r.get("layer") in survivor_layers and not r.get("skipped", False) and "final_mse" in r]
         print(f"{len(tier2_candidates)} (layer, hyperparameter) combos to evaluate at the surviving layer(s)")
-        tier2_results = evaluate_candidates(variant, tier2_candidates, ctx, adapter, eval_adapter, tier2_n, split="dev")
+        tier2_results = evaluate_candidates(variant, tier2_candidates, ctx, adapter, eval_adapter, tier2_n, split="dev", max_batch_rows=max_batch_rows)
         write("tier2", tier2_results)
 
     winner = max((r for r in tier2_results if not r["skipped"]), key=lambda r: r["judged_score"], default=None)
@@ -291,7 +333,7 @@ def run_tiered_search(
     print(f"Tier 2 winner: layer={winner['layer']}, {({k: v for k, v in winner.items() if k not in ('tier',)})}")
 
     print(f"\n== Final: full-size confirmation run, n={final_n}, TEST split ==")
-    final_results = evaluate_candidates(variant, [winner], ctx, adapter, eval_adapter, final_n, split="test")
+    final_results = evaluate_candidates(variant, [winner], ctx, adapter, eval_adapter, final_n, split="test", max_batch_rows=max_batch_rows)
     write("final", final_results)
     print(f"Final judged score: {final_results[0]['judged_score']:.4f} "
           f"[{final_results[0]['ci_lo']:.4f}, {final_results[0]['ci_hi']:.4f}] (95% CI, n={final_n})")
@@ -343,10 +385,12 @@ if __name__ == "__main__":
     parser.add_argument("--final-n", type=int, default=DEFAULT_FINAL_N)
     parser.add_argument("--top-k-layers", type=int, default=DEFAULT_TOP_K_LAYERS)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--max-batch-rows", type=int, default=DEFAULT_MAX_BATCH_ROWS,
+                        help="cap on rows (candidates x prompts) per generate() call -- lower this if you hit CUDA OOM")
     args = parser.parse_args()
     if args.summarize:
         summarize_all_variants(args.task)
     else:
         if not args.variant:
             parser.error("--variant is required unless --summarize is given")
-        run_tiered_search(args.task, args.variant, args.tier1_n, args.tier2_n, args.final_n, args.top_k_layers, args.seed)
+        run_tiered_search(args.task, args.variant, args.tier1_n, args.tier2_n, args.final_n, args.top_k_layers, args.seed, args.max_batch_rows)

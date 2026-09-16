@@ -217,7 +217,7 @@ def test_run_tiered_search_reuses_tier1_and_only_runs_tier2_and_final(tmp_path, 
 
     calls = []
 
-    def fake_evaluate_candidates(variant, candidates, ctx, adapter, eval_adapter, n_examples, split="dev"):
+    def fake_evaluate_candidates(variant, candidates, ctx, adapter, eval_adapter, n_examples, split="dev", max_batch_rows=None):
         calls.append((n_examples, split, len(candidates)))
         # Tier 2 and Final both go through this fake -- return a plausible winner each time.
         return [{**c, "skipped": False, "judged_score": 1.95, "ci_lo": 1.9, "ci_hi": 2.0, "n": n_examples} for c in candidates]
@@ -232,6 +232,75 @@ def test_run_tiered_search_reuses_tier1_and_only_runs_tier2_and_final(tmp_path, 
     ns_and_splits = [(n, split) for n, split, _ in calls]
     assert (180, "test") in ns_and_splits, "Final must still run"
     assert len(calls) == 2, f"expected exactly 2 evaluate_candidates calls (tier2, final), got {len(calls)}: {calls}"
+
+
+def test_chunk_groups_by_row_budget_respects_the_cap():
+    from evals.layer_hparam_search import _chunk_groups_by_row_budget
+
+    prompts_by_group = {0: ["p"] * 20, 1: ["p"] * 20, 2: ["p"] * 20}  # 3 groups, 20 rows each
+    chunks = _chunk_groups_by_row_budget(prompts_by_group, max_rows=45)
+    # 20+20=40 fits, +20 more would be 60 > 45 -- so groups 0,1 pack together, 2 alone
+    assert chunks == [[0, 1], [2]]
+
+
+def test_chunk_groups_by_row_budget_never_splits_a_single_oversized_group():
+    from evals.layer_hparam_search import _chunk_groups_by_row_budget
+
+    prompts_by_group = {0: ["p"] * 200}  # bigger than the cap on its own (e.g. Final's n=180)
+    chunks = _chunk_groups_by_row_budget(prompts_by_group, max_rows=60)
+    assert chunks == [[0]], "an oversized single group must still get its own chunk, not be dropped or split"
+
+
+def test_evaluate_candidates_never_calls_generate_with_more_rows_than_the_cap():
+    """The actual regression test for the real OOM: 5 candidates x 20 prompts = 100 rows total
+    must NOT all go into one generate_with_routed_configs call when max_batch_rows=45 -- and the
+    final per-candidate judged scores must still be correct regardless of how it got chunked."""
+    candidates = [{"layer": l, "mse_weight": 1.0, "nll_weight": 0.0} for l in [2, 4, 6, 8, 10]]
+    ctx = SearchContext(
+        model=object(), tokenizer=object(), n_layers=20, hidden_size=16, cache_dir=Path("/tmp"),
+        train_items=[], dev_items=[], train_responses={}, dev_responses={},
+    )
+
+    def fake_retrain(row, ctx):
+        return f"hook_for_layer_{row['layer']}"
+
+    call_sizes = []
+
+    def fake_generate_with_routed_configs(model, tokenizer, prompts_by_group, hooks_by_group, layer_by_group):
+        total_rows = sum(len(p) for p in prompts_by_group.values())
+        call_sizes.append(total_rows)
+        # Each group's "score" is its own LAYER (via layer_by_group), not the raw group index --
+        # so the final assertion can check the right candidate's result landed in the right slot
+        # regardless of which chunk it was computed in.
+        return {g: [f"resp_{layer_by_group[g]}"] * len(prompts) for g, prompts in prompts_by_group.items()}
+
+    fake_rows = [{"id": str(i)} for i in range(20)]
+
+    class _ScoringEvalAdapter:
+        SCORE_FIELDS = ["correct"]
+
+        @staticmethod
+        def score_response(row, response):
+            return {"correct": int(response.split("_")[-1])}  # score == the group_id, by construction
+
+    class _Adapter20:
+        def load_rows(self, split):
+            return fake_rows
+
+        def to_items(self, tokenizer, rows):
+            return [{"id": r["id"], "base_prompt": f"prompt_{r['id']}"} for r in rows]
+
+    with patch("evals.layer_hparam_search.RETRAIN_FNS", {"proper": fake_retrain}), \
+         patch("evals.layer_hparam_search.generate_with_routed_configs", side_effect=fake_generate_with_routed_configs):
+        results = evaluate_candidates("proper", candidates, ctx, _Adapter20(), _ScoringEvalAdapter(), n_examples=20, max_batch_rows=45)
+
+    assert all(size <= 45 for size in call_sizes), f"a chunk exceeded the row cap: {call_sizes}"
+    assert len(call_sizes) > 1, "5 candidates x 20 rows = 100 total must need more than one call at a 45-row cap"
+    for i, candidate in enumerate(candidates):
+        assert results[i]["judged_score"] == candidate["layer"], (
+            f"candidate for layer {candidate['layer']} got the wrong judged score after chunking -- "
+            f"a result must not get mixed up with a DIFFERENT candidate's chunk"
+        )
 
 
 def test_summarize_all_variants_reports_done_and_in_progress_correctly(tmp_path, monkeypatch):

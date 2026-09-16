@@ -170,15 +170,17 @@ every other fix in this project's history: a test that can't fail isn't evidence
 
 ## Known limits — real, not hidden
 
-- **Not yet run against the real model.** Every test above uses the fake model
-  (`tests/fakes.py`) — appropriate for proving the routing *logic* is correct, since that claim
-  depends only on tensor shapes and indexing, not on which model produced the tensors. It has not
-  yet been run against the real Qwen2.5-Coder-7B-Instruct end to end. Before trusting this for a
-  real sweep, run one small real comparison: batch 3-4 real configs together, compare against the
-  same configs run separately (unbatched) on the real model, confirm the generated *text* matches
-  token-for-token. The reasoning above says it must; that's still not the same as having watched
-  it happen on the real model once. `scripts/verify_batch_routing_real_model.py` does exactly this.
-- **Per-config batch size is still capped by GPU memory**, same as any batched generation — a
-  13-layer sweep at n=20 each is 260 rows in one call; that's fine on an 80GB card for a 7B model,
-  but it's a real ceiling, not an unlimited one. If a batch doesn't fit, split by however many
-  groups fit at once rather than assuming this scales without bound.
+- **Not yet run against the real model at the time this was written.** It has since been run for
+  real (see below) -- that verification actually happened and caught a real problem.
+- **Per-config batch size is capped by GPU memory, and this is no longer hypothetical.** A real
+  Tier 2 run on Qwen2.5-7B-Instruct (15 hyperparameter combos x 20 prompts = 300 rows in one
+  `generate_with_routed_configs` call) hit a genuine CUDA OOM on an 80GB A100 -- MLP intermediate
+  activations scale with batch_size x seq_len, and 300 rows was enough to exceed even that much
+  memory once responses grew during decode. Fixed in `evals/layer_hparam_search.py`:
+  `evaluate_candidates` now chunks candidates into multiple sequential `generate_with_routed_configs`
+  calls via `_chunk_groups_by_row_budget`, capped at `DEFAULT_MAX_BATCH_ROWS` (60, a conservative
+  starting point, not a measured ceiling -- lower it further if you still see OOMs, e.g.
+  `--max-batch-rows 30`, or raise it if you want to verify more headroom is actually available).
+  `steering/batch_routing.py` itself still has no built-in cap -- the responsibility for staying
+  within memory sits with the CALLER (as it now does in layer_hparam_search.py), not with
+  `generate_with_routed_configs` silently guessing a safe batch size on your behalf.
