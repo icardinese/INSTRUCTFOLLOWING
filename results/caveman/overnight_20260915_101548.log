@@ -1,0 +1,253 @@
+################################################################
+# Overnight caveman run starting at Tue Sep 15 10:15:48 AM UTC 2026
+# Log: results/caveman/overnight_20260915_101548.log
+################################################################
+
+== pre-flight checks ==
+openai.key: found
+CUDA: available
+core dependencies: importable
+pre-flight checks passed -- proceeding.
+
+== [2026-09-15 10:15:55] START: S-PSR baseline (layer=14) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:22,  4.11it/s]Loading weights:   1%|          | 2/339 [00:00<01:29,  3.75it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 12.26it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 37.43it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 55.44it/s]Loading weights:  12%|█▏        | 42/339 [00:00<00:04, 68.16it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 77.29it/s]Loading weights:  19%|█▉        | 65/339 [00:01<00:03, 81.27it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:02, 89.03it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 92.16it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 94.03it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 95.60it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 96.51it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 97.47it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 97.74it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 98.23it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 98.45it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 98.41it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 98.66it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 98.97it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 99.14it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 99.32it/s]Loading weights:  72%|███████▏  | 245/339 [00:03<00:00, 97.02it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 100.34it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 100.34it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 99.84it/s] Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 99.74it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 99.32it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 99.46it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 99.48it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 86.60it/s]
+collecting fixed (x, y) pairs at layer 14 (offline, injection-layer only)
+n_train_pairs=10924, n_dev_pairs=2917
+baseline_dev_mse=0.1127
+epoch=50 train_loss=0.0740
+epoch=100 train_loss=0.0737
+epoch=150 train_loss=0.0736
+epoch=200 train_loss=0.0735
+final_dev_mse=0.0696 (baseline was 0.1127)
+wrote results/caveman/psr_probe.pt
+== [2026-09-15 10:24:20] OK: S-PSR baseline (layer=14) ==
+
+== [2026-09-15 10:24:20] START: A-PSR baseline (automatic multi-layer) ==
+>>> results/caveman/a_psr_probe.pt already exists, skipping
+== [2026-09-15 10:24:28] OK: A-PSR baseline (automatic multi-layer) ==
+
+== [2026-09-15 10:24:28] START: PSR-Proper sweep (layer x loss-config) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:22,  4.07it/s]Loading weights:   1%|          | 2/339 [00:00<01:31,  3.70it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 12.06it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 36.86it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 54.64it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 66.89it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 75.56it/s]Loading weights:  19%|█▉        | 64/339 [00:01<00:03, 76.54it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:02, 87.40it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 90.39it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 92.81it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 94.47it/s]Loading weights:  37%|███▋      | 125/339 [00:01<00:02, 93.32it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 97.46it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 97.68it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 97.93it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 98.18it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 98.21it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 98.39it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 98.71it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 98.98it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 99.09it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 99.20it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 99.20it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 98.85it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 98.97it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 98.87it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 98.89it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 99.11it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 99.19it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 85.74it/s]
+>>> resuming sweep: 65 grid point(s) already in results/caveman/psr_proper_sweep.jsonl
+
+wrote 65 sweep rows to results/caveman/psr_proper_sweep.jsonl
+Best point (14, 1.0, 0.01) was completed in an earlier session -- retraining it once more.
+wrote results/caveman/psr_proper_probe.pt (best layer=14, mse_weight=1.0, nll_weight=0.01, final_mse=5.6947)
+== [2026-09-15 10:26:03] OK: PSR-Proper sweep (layer x loss-config) ==
+
+== [2026-09-15 10:26:03] START: Conceptor fixed-vector sweep (layer x alpha x loss-config) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:12,  1.75it/s]Loading weights:   5%|▍         | 16/339 [00:00<00:11, 28.19it/s]Loading weights:   9%|▊         | 29/339 [00:00<00:06, 46.79it/s]Loading weights:  12%|█▏        | 41/339 [00:00<00:04, 59.92it/s]Loading weights:  15%|█▌        | 52/339 [00:01<00:04, 67.46it/s]Loading weights:  19%|█▉        | 65/339 [00:01<00:03, 78.05it/s]Loading weights:  23%|██▎       | 77/339 [00:01<00:03, 83.71it/s]Loading weights:  26%|██▋       | 89/339 [00:01<00:02, 87.67it/s]Loading weights:  30%|██▉       | 101/339 [00:01<00:02, 90.82it/s]Loading weights:  33%|███▎      | 112/339 [00:01<00:02, 90.79it/s]Loading weights:  37%|███▋      | 125/339 [00:01<00:02, 95.21it/s]Loading weights:  40%|████      | 137/339 [00:01<00:02, 88.49it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:02, 93.42it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 94.82it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.78it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 96.66it/s]Loading weights:  58%|█████▊    | 197/339 [00:02<00:01, 94.71it/s]Loading weights:  62%|██████▏   | 209/339 [00:02<00:01, 96.09it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 99.34it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 99.18it/s]Loading weights:  72%|███████▏  | 245/339 [00:03<00:00, 96.33it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 99.62it/s]Loading weights:  79%|███████▉  | 269/339 [00:03<00:00, 96.97it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 100.29it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 100.06it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 99.97it/s] Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 99.84it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 99.83it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 85.92it/s]
+>>> resuming sweep: 325 grid point(s) already in results/caveman/psr_conceptor_sweep.jsonl
+
+wrote 325 sweep rows to results/caveman/psr_conceptor_sweep.jsonl
+Best point (26, 8.0, 1.0, 0.0) was completed in an earlier session -- retraining it once more.
+wrote results/caveman/psr_conceptor_probe.pt (best layer=26, alpha=8.0, mse_weight=1.0, nll_weight=0.0, final_mse=10.3999)
+== [2026-09-15 10:27:40] OK: Conceptor fixed-vector sweep (layer x alpha x loss-config) ==
+
+== [2026-09-15 10:27:40] START: Conceptor/matrix sweep (layer x alpha x loss-config) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<02:58,  1.90it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 11.95it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 35.13it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 52.62it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 65.36it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 74.70it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 81.27it/s]Loading weights:  23%|██▎       | 77/339 [00:01<00:03, 83.99it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 90.72it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 92.97it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 94.23it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 95.28it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 96.32it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 96.87it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 97.25it/s]Loading weights:  51%|█████     | 173/339 [00:02<00:01, 94.88it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 98.27it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 98.33it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 98.36it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 98.61it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 98.66it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 98.66it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 98.84it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 98.72it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 99.04it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 99.27it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 99.39it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 99.37it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 99.63it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 86.06it/s]
+>>> resuming sweep: 324 grid point(s) already in results/caveman/psr_conceptor_matrix_sweep.jsonl
+layer=26 alpha=16.0 delta_scale=355.52 participation_ratio=3583.990
+layer=26 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=10.5907 participation_ratio=3583.990
+
+wrote 325 sweep rows to results/caveman/psr_conceptor_matrix_sweep.jsonl
+Best point (26, 4.0, 1.0, 0.0) was completed in an earlier session -- retraining it once more to obtain its checkpoint tensors (cheap: pooling is cached).
+layer=26 alpha=4.0 delta_scale=354.85 participation_ratio=3582.555
+wrote results/caveman/psr_conceptor_matrix_probe.pt (best layer=26, alpha=4.0, mse_weight=1.0, nll_weight=0.0, final_mse=10.5387)
+== [2026-09-15 10:30:05] OK: Conceptor/matrix sweep (layer x alpha x loss-config) ==
+
+== [2026-09-15 10:30:05] START: Conceptor/selfproj sweep (layer x adaptive-alpha x loss-config) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:21,  4.17it/s]Loading weights:   1%|          | 2/339 [00:00<01:32,  3.66it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.83it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 36.55it/s]Loading weights:   8%|▊         | 28/339 [00:00<00:06, 49.65it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 68.11it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 76.83it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 82.73it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:02, 87.11it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 89.71it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 92.18it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 94.20it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 95.42it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 96.23it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 96.31it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 96.61it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 97.16it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 97.17it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 97.41it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 97.76it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 97.73it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 98.09it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 98.32it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 98.38it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 98.37it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 98.25it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 98.08it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 98.03it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 97.59it/s]Loading weights:  97%|█████████▋| 329/339 [00:03<00:00, 95.02it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 85.17it/s]
+layer=2 percentile=10 (alpha=24.0438) mse_weight=1.0 nll_weight=0.0: final_mse=34.9972 participation_ratio=3397.350
+layer=2 percentile=10 (alpha=24.0438) mse_weight=1.0 nll_weight=0.01: final_mse=34.9764 participation_ratio=3397.350
+layer=2 percentile=10 (alpha=24.0438) mse_weight=1.0 nll_weight=0.05: final_mse=34.9331 participation_ratio=3397.350
+layer=2 percentile=10 (alpha=24.0438) mse_weight=1.0 nll_weight=0.1: final_mse=35.0449 participation_ratio=3397.350
+layer=2 percentile=10 (alpha=24.0438) mse_weight=0.0 nll_weight=1.0: final_mse=54.1495 participation_ratio=3397.350
+layer=2 percentile=30 (alpha=13.5656) mse_weight=1.0 nll_weight=0.0: final_mse=40.3042 participation_ratio=3062.019
+layer=2 percentile=30 (alpha=13.5656) mse_weight=1.0 nll_weight=0.01: final_mse=40.3203 participation_ratio=3062.019
+layer=2 percentile=30 (alpha=13.5656) mse_weight=1.0 nll_weight=0.05: final_mse=40.4827 participation_ratio=3062.019
+layer=2 percentile=30 (alpha=13.5656) mse_weight=1.0 nll_weight=0.1: final_mse=40.7088 participation_ratio=3062.019
+layer=2 percentile=30 (alpha=13.5656) mse_weight=0.0 nll_weight=1.0: final_mse=58.7149 participation_ratio=3062.019
+layer=2 percentile=50 (alpha=7.6575) mse_weight=1.0 nll_weight=0.0: final_mse=36.4185 participation_ratio=2564.124
+layer=2 percentile=50 (alpha=7.6575) mse_weight=1.0 nll_weight=0.01: final_mse=36.4457 participation_ratio=2564.124
+layer=2 percentile=50 (alpha=7.6575) mse_weight=1.0 nll_weight=0.05: final_mse=36.4559 participation_ratio=2564.124
+layer=2 percentile=50 (alpha=7.6575) mse_weight=1.0 nll_weight=0.1: final_mse=36.4694 participation_ratio=2564.124
+layer=2 percentile=50 (alpha=7.6575) mse_weight=0.0 nll_weight=1.0: final_mse=43.6611 participation_ratio=2564.124
+layer=2 percentile=70 (alpha=4.0040) mse_weight=1.0 nll_weight=0.0: final_mse=34.7676 participation_ratio=1934.853
+layer=2 percentile=70 (alpha=4.0040) mse_weight=1.0 nll_weight=0.01: final_mse=34.7709 participation_ratio=1934.853
+layer=2 percentile=70 (alpha=4.0040) mse_weight=1.0 nll_weight=0.05: final_mse=34.6509 participation_ratio=1934.853
+layer=2 percentile=70 (alpha=4.0040) mse_weight=1.0 nll_weight=0.1: final_mse=34.6601 participation_ratio=1934.853
+layer=2 percentile=70 (alpha=4.0040) mse_weight=0.0 nll_weight=1.0: final_mse=35.8386 participation_ratio=1934.853
+layer=2 percentile=90 (alpha=1.6874) mse_weight=1.0 nll_weight=0.0: final_mse=34.0102 participation_ratio=1176.448
+layer=2 percentile=90 (alpha=1.6874) mse_weight=1.0 nll_weight=0.01: final_mse=33.9898 participation_ratio=1176.448
+layer=2 percentile=90 (alpha=1.6874) mse_weight=1.0 nll_weight=0.05: final_mse=33.9832 participation_ratio=1176.448
+layer=2 percentile=90 (alpha=1.6874) mse_weight=1.0 nll_weight=0.1: final_mse=34.0007 participation_ratio=1176.448
+layer=2 percentile=90 (alpha=1.6874) mse_weight=0.0 nll_weight=1.0: final_mse=34.2634 participation_ratio=1176.448
+layer=4 percentile=10 (alpha=11.6992) mse_weight=1.0 nll_weight=0.0: final_mse=35.4205 participation_ratio=3400.628
+layer=4 percentile=10 (alpha=11.6992) mse_weight=1.0 nll_weight=0.01: final_mse=35.4315 participation_ratio=3400.628
+layer=4 percentile=10 (alpha=11.6992) mse_weight=1.0 nll_weight=0.05: final_mse=35.4450 participation_ratio=3400.628
+layer=4 percentile=10 (alpha=11.6992) mse_weight=1.0 nll_weight=0.1: final_mse=35.5068 participation_ratio=3400.628
+layer=4 percentile=10 (alpha=11.6992) mse_weight=0.0 nll_weight=1.0: final_mse=44.9633 participation_ratio=3400.628
+layer=4 percentile=30 (alpha=7.0189) mse_weight=1.0 nll_weight=0.0: final_mse=35.4219 participation_ratio=3104.296
+layer=4 percentile=30 (alpha=7.0189) mse_weight=1.0 nll_weight=0.01: final_mse=35.4385 participation_ratio=3104.296
+layer=4 percentile=30 (alpha=7.0189) mse_weight=1.0 nll_weight=0.05: final_mse=35.4712 participation_ratio=3104.296
+layer=4 percentile=30 (alpha=7.0189) mse_weight=1.0 nll_weight=0.1: final_mse=35.4907 participation_ratio=3104.296
+layer=4 percentile=30 (alpha=7.0189) mse_weight=0.0 nll_weight=1.0: final_mse=43.8328 participation_ratio=3104.296
+layer=4 percentile=50 (alpha=4.3419) mse_weight=1.0 nll_weight=0.0: final_mse=34.7701 participation_ratio=2684.374
+layer=4 percentile=50 (alpha=4.3419) mse_weight=1.0 nll_weight=0.01: final_mse=34.7754 participation_ratio=2684.374
+layer=4 percentile=50 (alpha=4.3419) mse_weight=1.0 nll_weight=0.05: final_mse=34.8132 participation_ratio=2684.374
+layer=4 percentile=50 (alpha=4.3419) mse_weight=1.0 nll_weight=0.1: final_mse=34.8403 participation_ratio=2684.374
+layer=4 percentile=50 (alpha=4.3419) mse_weight=0.0 nll_weight=1.0: final_mse=39.1408 participation_ratio=2684.374
+layer=4 percentile=70 (alpha=2.5845) mse_weight=1.0 nll_weight=0.0: final_mse=34.0335 participation_ratio=2147.423
+layer=4 percentile=70 (alpha=2.5845) mse_weight=1.0 nll_weight=0.01: final_mse=34.0162 participation_ratio=2147.423
+layer=4 percentile=70 (alpha=2.5845) mse_weight=1.0 nll_weight=0.05: final_mse=34.0861 participation_ratio=2147.423
+layer=4 percentile=70 (alpha=2.5845) mse_weight=1.0 nll_weight=0.1: final_mse=33.9399 participation_ratio=2147.423
+layer=4 percentile=70 (alpha=2.5845) mse_weight=0.0 nll_weight=1.0: final_mse=35.1497 participation_ratio=2147.423
+layer=4 percentile=90 (alpha=1.2352) mse_weight=1.0 nll_weight=0.0: final_mse=33.3045 participation_ratio=1388.864
+layer=4 percentile=90 (alpha=1.2352) mse_weight=1.0 nll_weight=0.01: final_mse=33.2894 participation_ratio=1388.864
+layer=4 percentile=90 (alpha=1.2352) mse_weight=1.0 nll_weight=0.05: final_mse=33.2910 participation_ratio=1388.864
+layer=4 percentile=90 (alpha=1.2352) mse_weight=1.0 nll_weight=0.1: final_mse=33.3149 participation_ratio=1388.864
+layer=4 percentile=90 (alpha=1.2352) mse_weight=0.0 nll_weight=1.0: final_mse=33.9027 participation_ratio=1388.864
+layer=6 percentile=10 (alpha=8.4660) mse_weight=1.0 nll_weight=0.0: final_mse=34.5058 participation_ratio=3402.992
+layer=6 percentile=10 (alpha=8.4660) mse_weight=1.0 nll_weight=0.01: final_mse=34.5039 participation_ratio=3402.992
+layer=6 percentile=10 (alpha=8.4660) mse_weight=1.0 nll_weight=0.05: final_mse=34.5118 participation_ratio=3402.992
+layer=6 percentile=10 (alpha=8.4660) mse_weight=1.0 nll_weight=0.1: final_mse=34.5317 participation_ratio=3402.992
+layer=6 percentile=10 (alpha=8.4660) mse_weight=0.0 nll_weight=1.0: final_mse=37.8046 participation_ratio=3402.992
+layer=6 percentile=30 (alpha=5.2976) mse_weight=1.0 nll_weight=0.0: final_mse=34.2798 participation_ratio=3130.321
+layer=6 percentile=30 (alpha=5.2976) mse_weight=1.0 nll_weight=0.01: final_mse=34.2887 participation_ratio=3130.321
+layer=6 percentile=30 (alpha=5.2976) mse_weight=1.0 nll_weight=0.05: final_mse=34.3182 participation_ratio=3130.321
+layer=6 percentile=30 (alpha=5.2976) mse_weight=1.0 nll_weight=0.1: final_mse=34.3451 participation_ratio=3130.321
+layer=6 percentile=30 (alpha=5.2976) mse_weight=0.0 nll_weight=1.0: final_mse=37.2367 participation_ratio=3130.321
+layer=6 percentile=50 (alpha=3.4424) mse_weight=1.0 nll_weight=0.0: final_mse=34.0530 participation_ratio=2749.210
+layer=6 percentile=50 (alpha=3.4424) mse_weight=1.0 nll_weight=0.01: final_mse=34.0634 participation_ratio=2749.210
+layer=6 percentile=50 (alpha=3.4424) mse_weight=1.0 nll_weight=0.05: final_mse=34.0879 participation_ratio=2749.210
+layer=6 percentile=50 (alpha=3.4424) mse_weight=1.0 nll_weight=0.1: final_mse=34.1087 participation_ratio=2749.210
+layer=6 percentile=50 (alpha=3.4424) mse_weight=0.0 nll_weight=1.0: final_mse=36.4640 participation_ratio=2749.210
+layer=6 percentile=70 (alpha=2.1320) mse_weight=1.0 nll_weight=0.0: final_mse=33.5844 participation_ratio=2233.505
+layer=6 percentile=70 (alpha=2.1320) mse_weight=1.0 nll_weight=0.01: final_mse=33.5976 participation_ratio=2233.505
+layer=6 percentile=70 (alpha=2.1320) mse_weight=1.0 nll_weight=0.05: final_mse=33.6142 participation_ratio=2233.505
+layer=6 percentile=70 (alpha=2.1320) mse_weight=1.0 nll_weight=0.1: final_mse=33.6475 participation_ratio=2233.505
+layer=6 percentile=70 (alpha=2.1320) mse_weight=0.0 nll_weight=1.0: final_mse=35.6701 participation_ratio=2233.505
+layer=6 percentile=90 (alpha=1.0160) mse_weight=1.0 nll_weight=0.0: final_mse=32.2938 participation_ratio=1421.694
+layer=6 percentile=90 (alpha=1.0160) mse_weight=1.0 nll_weight=0.01: final_mse=32.2998 participation_ratio=1421.694
+layer=6 percentile=90 (alpha=1.0160) mse_weight=1.0 nll_weight=0.05: final_mse=32.2826 participation_ratio=1421.694
+layer=6 percentile=90 (alpha=1.0160) mse_weight=1.0 nll_weight=0.1: final_mse=32.2817 participation_ratio=1421.694
+layer=6 percentile=90 (alpha=1.0160) mse_weight=0.0 nll_weight=1.0: final_mse=33.5485 participation_ratio=1421.694
+layer=8 percentile=10 (alpha=6.3526) mse_weight=1.0 nll_weight=0.0: final_mse=34.2630 participation_ratio=3403.034
+layer=8 percentile=10 (alpha=6.3526) mse_weight=1.0 nll_weight=0.01: final_mse=34.2765 participation_ratio=3403.034
+layer=8 percentile=10 (alpha=6.3526) mse_weight=1.0 nll_weight=0.05: final_mse=34.3066 participation_ratio=3403.034
+layer=8 percentile=10 (alpha=6.3526) mse_weight=1.0 nll_weight=0.1: final_mse=34.3664 participation_ratio=3403.034
+layer=8 percentile=10 (alpha=6.3526) mse_weight=0.0 nll_weight=1.0: final_mse=40.3379 participation_ratio=3403.034
+layer=8 percentile=30 (alpha=4.0962) mse_weight=1.0 nll_weight=0.0: final_mse=34.1854 participation_ratio=3146.097
+layer=8 percentile=30 (alpha=4.0962) mse_weight=1.0 nll_weight=0.01: final_mse=34.1993 participation_ratio=3146.097
+layer=8 percentile=30 (alpha=4.0962) mse_weight=1.0 nll_weight=0.05: final_mse=34.2341 participation_ratio=3146.097
+layer=8 percentile=30 (alpha=4.0962) mse_weight=1.0 nll_weight=0.1: final_mse=34.2739 participation_ratio=3146.097
+layer=8 percentile=30 (alpha=4.0962) mse_weight=0.0 nll_weight=1.0: final_mse=38.5663 participation_ratio=3146.097
+layer=8 percentile=50 (alpha=2.7282) mse_weight=1.0 nll_weight=0.0: final_mse=34.0166 participation_ratio=2783.195
+layer=8 percentile=50 (alpha=2.7282) mse_weight=1.0 nll_weight=0.01: final_mse=34.0226 participation_ratio=2783.195
+layer=8 percentile=50 (alpha=2.7282) mse_weight=1.0 nll_weight=0.05: final_mse=34.0539 participation_ratio=2783.195
+layer=8 percentile=50 (alpha=2.7282) mse_weight=1.0 nll_weight=0.1: final_mse=34.0943 participation_ratio=2783.195
+layer=8 percentile=50 (alpha=2.7282) mse_weight=0.0 nll_weight=1.0: final_mse=37.6620 participation_ratio=2783.195
+layer=8 percentile=70 (alpha=1.7105) mse_weight=1.0 nll_weight=0.0: final_mse=33.6134 participation_ratio=2267.198
+layer=8 percentile=70 (alpha=1.7105) mse_weight=1.0 nll_weight=0.01: final_mse=33.6176 participation_ratio=2267.198
+layer=8 percentile=70 (alpha=1.7105) mse_weight=1.0 nll_weight=0.05: final_mse=33.6363 participation_ratio=2267.198
+layer=8 percentile=70 (alpha=1.7105) mse_weight=1.0 nll_weight=0.1: final_mse=33.6646 participation_ratio=2267.198
+layer=8 percentile=70 (alpha=1.7105) mse_weight=0.0 nll_weight=1.0: final_mse=35.8483 participation_ratio=2267.198
+layer=8 percentile=90 (alpha=0.7920) mse_weight=1.0 nll_weight=0.0: final_mse=32.5453 participation_ratio=1397.717
+layer=8 percentile=90 (alpha=0.7920) mse_weight=1.0 nll_weight=0.01: final_mse=32.5360 participation_ratio=1397.717
+layer=8 percentile=90 (alpha=0.7920) mse_weight=1.0 nll_weight=0.05: final_mse=32.5205 participation_ratio=1397.717
+layer=8 percentile=90 (alpha=0.7920) mse_weight=1.0 nll_weight=0.1: final_mse=32.5500 participation_ratio=1397.717
+layer=8 percentile=90 (alpha=0.7920) mse_weight=0.0 nll_weight=1.0: final_mse=33.1192 participation_ratio=1397.717
+layer=10 percentile=10 (alpha=7.6758) mse_weight=1.0 nll_weight=0.0: final_mse=34.0136 participation_ratio=3400.523
+layer=10 percentile=10 (alpha=7.6758) mse_weight=1.0 nll_weight=0.01: final_mse=34.0206 participation_ratio=3400.523
+layer=10 percentile=10 (alpha=7.6758) mse_weight=1.0 nll_weight=0.05: final_mse=34.0425 participation_ratio=3400.523
+layer=10 percentile=10 (alpha=7.6758) mse_weight=1.0 nll_weight=0.1: final_mse=34.0744 participation_ratio=3400.523
+layer=10 percentile=10 (alpha=7.6758) mse_weight=0.0 nll_weight=1.0: final_mse=41.9190 participation_ratio=3400.523
+layer=10 percentile=30 (alpha=4.8269) mse_weight=1.0 nll_weight=0.0: final_mse=33.9385 participation_ratio=3125.945
+layer=10 percentile=30 (alpha=4.8269) mse_weight=1.0 nll_weight=0.01: final_mse=33.9378 participation_ratio=3125.945
+layer=10 percentile=30 (alpha=4.8269) mse_weight=1.0 nll_weight=0.05: final_mse=33.9707 participation_ratio=3125.945
+layer=10 percentile=30 (alpha=4.8269) mse_weight=1.0 nll_weight=0.1: final_mse=34.0075 participation_ratio=3125.945
+layer=10 percentile=30 (alpha=4.8269) mse_weight=0.0 nll_weight=1.0: final_mse=38.1013 participation_ratio=3125.945
+layer=10 percentile=50 (alpha=3.1158) mse_weight=1.0 nll_weight=0.0: final_mse=33.6572 participation_ratio=2729.936
+layer=10 percentile=50 (alpha=3.1158) mse_weight=1.0 nll_weight=0.01: final_mse=33.6527 participation_ratio=2729.936
+layer=10 percentile=50 (alpha=3.1158) mse_weight=1.0 nll_weight=0.05: final_mse=33.6817 participation_ratio=2729.936
+layer=10 percentile=50 (alpha=3.1158) mse_weight=1.0 nll_weight=0.1: final_mse=33.7184 participation_ratio=2729.936
+layer=10 percentile=50 (alpha=3.1158) mse_weight=0.0 nll_weight=1.0: final_mse=36.3085 participation_ratio=2729.936
+layer=10 percentile=70 (alpha=1.8669) mse_weight=1.0 nll_weight=0.0: final_mse=33.2446 participation_ratio=2165.303
+layer=10 percentile=70 (alpha=1.8669) mse_weight=1.0 nll_weight=0.01: final_mse=33.2436 participation_ratio=2165.303
+layer=10 percentile=70 (alpha=1.8669) mse_weight=1.0 nll_weight=0.05: final_mse=33.2611 participation_ratio=2165.303
+layer=10 percentile=70 (alpha=1.8669) mse_weight=1.0 nll_weight=0.1: final_mse=33.2769 participation_ratio=2165.303
+layer=10 percentile=70 (alpha=1.8669) mse_weight=0.0 nll_weight=1.0: final_mse=34.2568 participation_ratio=2165.303
+layer=10 percentile=90 (alpha=0.7863) mse_weight=1.0 nll_weight=0.0: final_mse=32.1872 participation_ratio=1243.997
+layer=10 percentile=90 (alpha=0.7863) mse_weight=1.0 nll_weight=0.01: final_mse=32.1874 participation_ratio=1243.997
+layer=10 percentile=90 (alpha=0.7863) mse_weight=1.0 nll_weight=0.05: final_mse=32.1962 participation_ratio=1243.997
+layer=10 percentile=90 (alpha=0.7863) mse_weight=1.0 nll_weight=0.1: final_mse=32.1939 participation_ratio=1243.997
+layer=10 percentile=90 (alpha=0.7863) mse_weight=0.0 nll_weight=1.0: final_mse=32.9049 participation_ratio=1243.997
+layer=12 percentile=10 (alpha=6.9946) mse_weight=1.0 nll_weight=0.0: final_mse=33.7128 participation_ratio=3398.677
+layer=12 percentile=10 (alpha=6.9946) mse_weight=1.0 nll_weight=0.01: final_mse=33.7166 participation_ratio=3398.677
+layer=12 percentile=10 (alpha=6.9946) mse_weight=1.0 nll_weight=0.05: final_mse=33.7443 participation_ratio=3398.677
+layer=12 percentile=10 (alpha=6.9946) mse_weight=1.0 nll_weight=0.1: final_mse=33.8089 participation_ratio=3398.677
+layer=12 percentile=10 (alpha=6.9946) mse_weight=0.0 nll_weight=1.0: final_mse=37.7089 participation_ratio=3398.677
+layer=12 percentile=30 (alpha=4.4072) mse_weight=1.0 nll_weight=0.0: final_mse=33.3506 participation_ratio=3126.115
+layer=12 percentile=30 (alpha=4.4072) mse_weight=1.0 nll_weight=0.01: final_mse=33.3600 participation_ratio=3126.115
+layer=12 percentile=30 (alpha=4.4072) mse_weight=1.0 nll_weight=0.05: final_mse=33.3738 participation_ratio=3126.115
+layer=12 percentile=30 (alpha=4.4072) mse_weight=1.0 nll_weight=0.1: final_mse=33.4040 participation_ratio=3126.115
+layer=12 percentile=30 (alpha=4.4072) mse_weight=0.0 nll_weight=1.0: final_mse=35.3131 participation_ratio=3126.115
+layer=12 percentile=50 (alpha=2.8799) mse_weight=1.0 nll_weight=0.0: final_mse=33.0041 participation_ratio=2742.530
+layer=12 percentile=50 (alpha=2.8799) mse_weight=1.0 nll_weight=0.01: final_mse=33.0095 participation_ratio=2742.530
+layer=12 percentile=50 (alpha=2.8799) mse_weight=1.0 nll_weight=0.05: final_mse=33.0170 participation_ratio=2742.530
+layer=12 percentile=50 (alpha=2.8799) mse_weight=1.0 nll_weight=0.1: final_mse=33.0338 participation_ratio=2742.530
+layer=12 percentile=50 (alpha=2.8799) mse_weight=0.0 nll_weight=1.0: final_mse=34.7389 participation_ratio=2742.530
+layer=12 percentile=70 (alpha=1.7489) mse_weight=1.0 nll_weight=0.0: final_mse=32.5445 participation_ratio=2191.261
+layer=12 percentile=70 (alpha=1.7489) mse_weight=1.0 nll_weight=0.01: final_mse=32.5412 participation_ratio=2191.261
+layer=12 percentile=70 (alpha=1.7489) mse_weight=1.0 nll_weight=0.05: final_mse=32.5519 participation_ratio=2191.261
+layer=12 percentile=70 (alpha=1.7489) mse_weight=1.0 nll_weight=0.1: final_mse=32.5609 participation_ratio=2191.261
+layer=12 percentile=70 (alpha=1.7489) mse_weight=0.0 nll_weight=1.0: final_mse=33.6606 participation_ratio=2191.261
+layer=12 percentile=90 (alpha=0.7447) mse_weight=1.0 nll_weight=0.0: final_mse=31.6364 participation_ratio=1267.095
+layer=12 percentile=90 (alpha=0.7447) mse_weight=1.0 nll_weight=0.01: final_mse=31.6180 participation_ratio=1267.095
+layer=12 percentile=90 (alpha=0.7447) mse_weight=1.0 nll_weight=0.05: final_mse=31.6408 participation_ratio=1267.095
+layer=12 percentile=90 (alpha=0.7447) mse_weight=1.0 nll_weight=0.1: final_mse=31.6273 participation_ratio=1267.095
+layer=12 percentile=90 (alpha=0.7447) mse_weight=0.0 nll_weight=1.0: final_mse=32.0322 participation_ratio=1267.095
+layer=14 percentile=10 (alpha=6.6171) mse_weight=1.0 nll_weight=0.0: final_mse=33.6589 participation_ratio=3398.160
+layer=14 percentile=10 (alpha=6.6171) mse_weight=1.0 nll_weight=0.01: final_mse=33.6698 participation_ratio=3398.160
+layer=14 percentile=10 (alpha=6.6171) mse_weight=1.0 nll_weight=0.05: final_mse=33.7169 participation_ratio=3398.160
+layer=14 percentile=10 (alpha=6.6171) mse_weight=1.0 nll_weight=0.1: final_mse=33.7837 participation_ratio=3398.160
+layer=14 percentile=10 (alpha=6.6171) mse_weight=0.0 nll_weight=1.0: final_mse=38.7465 participation_ratio=3398.160
+layer=14 percentile=30 (alpha=4.0845) mse_weight=1.0 nll_weight=0.0: final_mse=33.5477 participation_ratio=3115.441
+layer=14 percentile=30 (alpha=4.0845) mse_weight=1.0 nll_weight=0.01: final_mse=33.5564 participation_ratio=3115.441
+layer=14 percentile=30 (alpha=4.0845) mse_weight=1.0 nll_weight=0.05: final_mse=33.5730 participation_ratio=3115.441
+layer=14 percentile=30 (alpha=4.0845) mse_weight=1.0 nll_weight=0.1: final_mse=33.6014 participation_ratio=3115.441
+layer=14 percentile=30 (alpha=4.0845) mse_weight=0.0 nll_weight=1.0: final_mse=36.6213 participation_ratio=3115.441
+layer=14 percentile=50 (alpha=2.6378) mse_weight=1.0 nll_weight=0.0: final_mse=33.2512 participation_ratio=2724.003
+layer=14 percentile=50 (alpha=2.6378) mse_weight=1.0 nll_weight=0.01: final_mse=33.2530 participation_ratio=2724.003
+layer=14 percentile=50 (alpha=2.6378) mse_weight=1.0 nll_weight=0.05: final_mse=33.2675 participation_ratio=2724.003
+layer=14 percentile=50 (alpha=2.6378) mse_weight=1.0 nll_weight=0.1: final_mse=33.2760 participation_ratio=2724.003
+layer=14 percentile=50 (alpha=2.6378) mse_weight=0.0 nll_weight=1.0: final_mse=35.5045 participation_ratio=2724.003
+layer=14 percentile=70 (alpha=1.5933) mse_weight=1.0 nll_weight=0.0: final_mse=32.8274 participation_ratio=2173.524
+layer=14 percentile=70 (alpha=1.5933) mse_weight=1.0 nll_weight=0.01: final_mse=32.8251 participation_ratio=2173.524
+layer=14 percentile=70 (alpha=1.5933) mse_weight=1.0 nll_weight=0.05: final_mse=32.8292 participation_ratio=2173.524
+layer=14 percentile=70 (alpha=1.5933) mse_weight=1.0 nll_weight=0.1: final_mse=32.8477 participation_ratio=2173.524
+layer=14 percentile=70 (alpha=1.5933) mse_weight=0.0 nll_weight=1.0: final_mse=33.8983 participation_ratio=2173.524
+layer=14 percentile=90 (alpha=0.6809) mse_weight=1.0 nll_weight=0.0: final_mse=31.7221 participation_ratio=1266.124
+layer=14 percentile=90 (alpha=0.6809) mse_weight=1.0 nll_weight=0.01: final_mse=31.7213 participation_ratio=1266.124
+layer=14 percentile=90 (alpha=0.6809) mse_weight=1.0 nll_weight=0.05: final_mse=31.7195 participation_ratio=1266.124
+layer=14 percentile=90 (alpha=0.6809) mse_weight=1.0 nll_weight=0.1: final_mse=31.7032 participation_ratio=1266.124
+layer=14 percentile=90 (alpha=0.6809) mse_weight=0.0 nll_weight=1.0: final_mse=32.1620 participation_ratio=1266.124
+layer=16 percentile=10 (alpha=5.0096) mse_weight=1.0 nll_weight=0.0: final_mse=33.1147 participation_ratio=3401.715
+layer=16 percentile=10 (alpha=5.0096) mse_weight=1.0 nll_weight=0.01: final_mse=33.1218 participation_ratio=3401.715
+layer=16 percentile=10 (alpha=5.0096) mse_weight=1.0 nll_weight=0.05: final_mse=33.1288 participation_ratio=3401.715
+layer=16 percentile=10 (alpha=5.0096) mse_weight=1.0 nll_weight=0.1: final_mse=33.1540 participation_ratio=3401.715
+layer=16 percentile=10 (alpha=5.0096) mse_weight=0.0 nll_weight=1.0: final_mse=35.3105 participation_ratio=3401.715
+layer=16 percentile=30 (alpha=3.2110) mse_weight=1.0 nll_weight=0.0: final_mse=33.2051 participation_ratio=3140.778
+layer=16 percentile=30 (alpha=3.2110) mse_weight=1.0 nll_weight=0.01: final_mse=33.2150 participation_ratio=3140.778
+layer=16 percentile=30 (alpha=3.2110) mse_weight=1.0 nll_weight=0.05: final_mse=33.2278 participation_ratio=3140.778
+layer=16 percentile=30 (alpha=3.2110) mse_weight=1.0 nll_weight=0.1: final_mse=33.2483 participation_ratio=3140.778
+layer=16 percentile=30 (alpha=3.2110) mse_weight=0.0 nll_weight=1.0: final_mse=35.7832 participation_ratio=3140.778
+layer=16 percentile=50 (alpha=2.1386) mse_weight=1.0 nll_weight=0.0: final_mse=33.0233 participation_ratio=2776.640
+layer=16 percentile=50 (alpha=2.1386) mse_weight=1.0 nll_weight=0.01: final_mse=33.0217 participation_ratio=2776.640
+layer=16 percentile=50 (alpha=2.1386) mse_weight=1.0 nll_weight=0.05: final_mse=33.0310 participation_ratio=2776.640
