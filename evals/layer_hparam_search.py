@@ -193,6 +193,22 @@ def evaluate_candidates(
     return results
 
 
+def load_existing_tiered_results(out_path: Path) -> dict[str, list[dict]]:
+    """{"tier1": [...], "tier2": [...], "final": [...]} from a previous (possibly interrupted) run
+    of this exact variant, or {} if out_path doesn't exist yet. Each row has its "tier" key
+    stripped back off -- the on-disk format tags every row with its tier, but callers that
+    reconstruct e.g. tier1_results from this want the same shape evaluate_candidates() returns."""
+    if not out_path.exists():
+        return {}
+    by_tier: dict[str, list[dict]] = {}
+    with out_path.open() as f:
+        for line in f:
+            row = json.loads(line)
+            tier = row.pop("tier")
+            by_tier.setdefault(tier, []).append(row)
+    return by_tier
+
+
 def run_tiered_search(
     task: str,
     variant: str,
@@ -207,6 +223,13 @@ def run_tiered_search(
     sweep_path = adapter.RESULTS_DIR / f"psr_{variant}_sweep.jsonl"
     if not sweep_path.exists():
         raise FileNotFoundError(f"{sweep_path} not found -- run that variant's --sweep first")
+
+    out_path = adapter.RESULTS_DIR / f"{variant}_tiered_search.jsonl"
+    existing = load_existing_tiered_results(out_path)
+    if "final" in existing:
+        print(f"{out_path} already has a Final result for '{variant}' -- fully done, skipping. "
+              f"Delete {out_path} (or just its 'final' row) to force a rerun.")
+        return
 
     device = "cuda"
     model, tokenizer = load_model(device, model_name=adapter.MODEL_NAME)
@@ -223,8 +246,7 @@ def run_tiered_search(
         train_responses=train_responses, dev_responses=dev_responses, seed=seed,
     )
 
-    out_path = adapter.RESULTS_DIR / f"{variant}_tiered_search.jsonl"
-    all_results = []
+    all_results = [{"tier": tier, **r} for tier, rows in existing.items() for r in rows]
 
     def write(tier: str, rows: list[dict]) -> None:
         for r in rows:
@@ -233,12 +255,17 @@ def run_tiered_search(
             for r in all_results:
                 f.write(json.dumps(r) + "\n")
 
-    print(f"== Tier 1: layer sweep, n={tier1_n}, real judged evaluation decides survivors ==")
     sweep_rows = load_sweep_rows(sweep_path)
-    tier1_candidates = list(best_row_per_layer(sweep_rows).values())
-    print(f"{len(tier1_candidates)} layers to evaluate (MSE-best hyperparameter combo per layer)")
-    tier1_results = evaluate_candidates(variant, tier1_candidates, ctx, adapter, eval_adapter, tier1_n, split="dev")
-    write("tier1", tier1_results)
+
+    if "tier1" in existing:
+        print(f"Tier 1 already complete ({len(existing['tier1'])} rows) -- reusing from {out_path}")
+        tier1_results = existing["tier1"]
+    else:
+        print(f"== Tier 1: layer sweep, n={tier1_n}, real judged evaluation decides survivors ==")
+        tier1_candidates = list(best_row_per_layer(sweep_rows).values())
+        print(f"{len(tier1_candidates)} layers to evaluate (MSE-best hyperparameter combo per layer)")
+        tier1_results = evaluate_candidates(variant, tier1_candidates, ctx, adapter, eval_adapter, tier1_n, split="dev")
+        write("tier1", tier1_results)
 
     survivors = sorted((r for r in tier1_results if not r["skipped"]), key=lambda r: -r["judged_score"])[:top_k_layers]
     if not survivors:
@@ -246,12 +273,16 @@ def run_tiered_search(
         return
     print(f"Tier 1 survivors (top {top_k_layers} by judged score): {[s['layer'] for s in survivors]}")
 
-    print(f"\n== Tier 2: hyperparameter sweep at surviving layer(s), n={tier2_n} ==")
-    survivor_layers = {s["layer"] for s in survivors}
-    tier2_candidates = [r for r in sweep_rows if r.get("layer") in survivor_layers and not r.get("skipped", False) and "final_mse" in r]
-    print(f"{len(tier2_candidates)} (layer, hyperparameter) combos to evaluate at the surviving layer(s)")
-    tier2_results = evaluate_candidates(variant, tier2_candidates, ctx, adapter, eval_adapter, tier2_n, split="dev")
-    write("tier2", tier2_results)
+    if "tier2" in existing:
+        print(f"Tier 2 already complete ({len(existing['tier2'])} rows) -- reusing from {out_path}")
+        tier2_results = existing["tier2"]
+    else:
+        print(f"\n== Tier 2: hyperparameter sweep at surviving layer(s), n={tier2_n} ==")
+        survivor_layers = {s["layer"] for s in survivors}
+        tier2_candidates = [r for r in sweep_rows if r.get("layer") in survivor_layers and not r.get("skipped", False) and "final_mse" in r]
+        print(f"{len(tier2_candidates)} (layer, hyperparameter) combos to evaluate at the surviving layer(s)")
+        tier2_results = evaluate_candidates(variant, tier2_candidates, ctx, adapter, eval_adapter, tier2_n, split="dev")
+        write("tier2", tier2_results)
 
     winner = max((r for r in tier2_results if not r["skipped"]), key=lambda r: r["judged_score"], default=None)
     if winner is None:
@@ -267,14 +298,55 @@ def run_tiered_search(
     print(f"\nWrote full tiered search log to {out_path}")
 
 
+def summarize_all_variants(task: str) -> dict:
+    """Reads every {variant}_tiered_search.jsonl that exists yet for this task, pulls out each
+    one's Final row (the real, full-n, test-split, judged-evidence winner), prints a comparison
+    table, and writes results/<task>/tiered_search_summary.json. Safe to call any time, including
+    mid-overnight-run -- a variant that hasn't reached Final yet is just reported as "not done"
+    rather than causing an error, so this doubles as a progress check, not only a final report."""
+    adapter = get_adapter(task)
+    summary = {}
+    for path in sorted(adapter.RESULTS_DIR.glob("*_tiered_search.jsonl")):
+        variant = path.stem.removesuffix("_tiered_search")
+        existing = load_existing_tiered_results(path)
+        if "final" not in existing:
+            summary[variant] = {"status": f"not yet at Final (tiers done: {sorted(existing.keys())})"}
+            continue
+        row = existing["final"][0]
+        summary[variant] = {
+            "status": "done", "layer": row["layer"], "judged_score": row["judged_score"],
+            "ci_lo": row["ci_lo"], "ci_hi": row["ci_hi"], "n": row["n"],
+        }
+
+    print(f"{'variant':<22}{'status':<45}{'layer':>8}{'judged_score':>15}{'95% CI':>20}")
+    for variant, s in summary.items():
+        if s["status"] != "done":
+            print(f"{variant:<22}{s['status']:<45}")
+            continue
+        ci = f"[{s['ci_lo']:.3f}, {s['ci_hi']:.3f}]"
+        print(f"{variant:<22}{'done':<45}{s['layer']:>8}{s['judged_score']:>15.4f}{ci:>20}")
+
+    out_path = adapter.RESULTS_DIR / "tiered_search_summary.json"
+    with out_path.open("w") as f:
+        json.dump(summary, f, indent=2)
+    print(f"\nwrote {out_path}")
+    return summary
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
-    parser.add_argument("--variant", required=True, choices=list(RETRAIN_FNS.keys()))
+    parser.add_argument("--variant", choices=list(RETRAIN_FNS.keys()), help="omit with --summarize to just aggregate every variant's results")
+    parser.add_argument("--summarize", action="store_true", help="skip searching -- just read whatever *_tiered_search.jsonl files exist and print/write a comparison")
     parser.add_argument("--tier1-n", type=int, default=DEFAULT_TIER1_N)
     parser.add_argument("--tier2-n", type=int, default=DEFAULT_TIER2_N)
     parser.add_argument("--final-n", type=int, default=DEFAULT_FINAL_N)
     parser.add_argument("--top-k-layers", type=int, default=DEFAULT_TOP_K_LAYERS)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
-    run_tiered_search(args.task, args.variant, args.tier1_n, args.tier2_n, args.final_n, args.top_k_layers, args.seed)
+    if args.summarize:
+        summarize_all_variants(args.task)
+    else:
+        if not args.variant:
+            parser.error("--variant is required unless --summarize is given")
+        run_tiered_search(args.task, args.variant, args.tier1_n, args.tier2_n, args.final_n, args.top_k_layers, args.seed)
