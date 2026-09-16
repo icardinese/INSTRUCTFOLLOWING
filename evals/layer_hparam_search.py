@@ -32,7 +32,7 @@ import torch
 from adapters.registry import get_adapter
 from core.generation_cache import load_or_compute_responses
 from core.model_common import generate_response, load_model, num_layers
-from evals.bootstrap_analysis import bootstrap_ci
+from evals.bootstrap_analysis import bootstrap_ci, paired_bootstrap_diff
 from evals.registry import get_eval_adapter
 from steering.batch_routing import generate_with_routed_configs
 from steering.psr.gate import GateState
@@ -173,6 +173,58 @@ def best_row_per_layer(rows: list[dict]) -> dict[int, dict]:
     return best
 
 
+_PROMPT_BASELINE_GROUP = "__prompt_baseline__"
+# The ceiling value of eval_adapter.SCORE_FIELDS[0], needed only for fully_correct_rate (a
+# REPORTED-only metric, never used in selection -- see select_constrained_survivors, which is
+# untouched by this). Caveman's "correct" field is 0|1|2 (see evals/caveman/judge.py's RUBRIC);
+# ifeval's "follow_all_instructions" is already binary (0|1). Neither judge module currently
+# declares its own scale, so this is a parameter rather than something introspected automatically.
+DEFAULT_PRIMARY_FIELD_MAX = 2
+
+
+def _fully_correct_rate(scores: list[float], primary_field_max: float) -> float:
+    """Fraction of examples scoring exactly at the ceiling -- the metric your own draft paper's
+    Figure 1 actually plots ("Fully-Correct Rate"), distinct from the MEAN score that drives
+    selection (mean_score treats a 1 as "half credit"; this treats anything short of the ceiling
+    as equally "not fully correct," same as the paper's own y-axis does)."""
+    return sum(1 for s in scores if s == primary_field_max) / len(scores)
+
+
+def _avg_tokens(ctx: SearchContext, responses: list[str]) -> float:
+    """Raw response length -- the blunt, always-available proxy for terseness, reported
+    alongside the judged conciseness score (which is what actually drives selection) rather than
+    instead of it. Kept separate deliberately: a response can be short by accident or short
+    because the wording is genuinely tight, and conflating the two was the whole reason the
+    judged conciseness field exists in the first place (see evals/caveman/judge.py)."""
+    return sum(len(ctx.tokenizer(resp)["input_ids"]) for resp in responses) / len(responses)
+
+
+def mark_pareto_frontier(results: list[dict]) -> list[dict]:
+    """Attaches on_pareto_frontier: bool to every non-skipped result -- True if no OTHER result
+    is both >= it on judged_score (correctness) AND >= it on optimize_score (conciseness), with
+    at least one strictly greater. Purely informational: never read by select_constrained_survivors,
+    never affects which candidate wins -- it's here so the full correctness/conciseness tradeoff
+    shape for a tier survives in the log even when you'd have picked a different point off it than
+    the automated selection did. Skipped candidates get on_pareto_frontier=None (not comparable)."""
+    usable = [r for r in results if not r.get("skipped", False)]
+    frontier_ids = set()
+    for i, r in enumerate(usable):
+        dominated = False
+        for j, other in enumerate(usable):
+            if i == j:
+                continue
+            if (other["judged_score"] >= r["judged_score"] and other["optimize_score"] >= r["optimize_score"]
+                    and (other["judged_score"] > r["judged_score"] or other["optimize_score"] > r["optimize_score"])):
+                dominated = True
+                break
+        if not dominated:
+            frontier_ids.add(id(r))
+    return [
+        {**r, "on_pareto_frontier": (id(r) in frontier_ids) if not r.get("skipped", False) else None}
+        for r in results
+    ]
+
+
 def evaluate_candidates(
     variant: str,
     candidates: list[dict],
@@ -182,13 +234,36 @@ def evaluate_candidates(
     n_examples: int,
     split: str = "dev",
     max_batch_rows: int = DEFAULT_MAX_BATCH_ROWS,
+    optimize_field: str | None = None,
+    primary_field_max: float = DEFAULT_PRIMARY_FIELD_MAX,
 ) -> list[dict]:
     """Retrains every candidate, then batches them into generate_with_routed_configs calls --
     as many candidates per call as fit within max_batch_rows total prompt-rows, chunked into
     multiple sequential calls if there are more than that (see DEFAULT_MAX_BATCH_ROWS's docstring
-    for why this cap exists -- it's a fix for a real OOM, not a hypothetical precaution). Judges
-    n_examples real responses per candidate, returns each candidate augmented with
-    judged_score/ci_lo/ci_hi.
+    for why this cap exists -- it's a fix for a real OOM, not a hypothetical precaution).
+
+    ALSO generates a Prompt-alone (no steering, the real instructed prompt, not the base one)
+    baseline in the SAME batched call, on the SAME rows -- not read from some other run's
+    aggregate file, specifically so it's PAIRED to every candidate's scores here (paired
+    comparisons need the same underlying examples; an old summary_test.json's mean was very
+    likely computed on a different split/n and can't be validly paired against anything). This is
+    what lets select_constrained_survivors enforce "not significantly worse than Prompt alone" --
+    your own project's own central question (finding #5) -- not just "not worse than the best
+    candidate in this grid," which says nothing about whether ANY of them actually beat prompting.
+
+    Judges n_examples real responses per candidate on TWO axes that drive selection --
+    `judged_score` (eval_adapter.SCORE_FIELDS[0], e.g. "correct" -- the GATE) and `optimize_score`
+    (the task's own "conciseness" judged field if its judge provides one, e.g. caveman, else
+    negative average response token count) -- PLUS two more that are computed and logged but
+    never fed into any selection decision: `fully_correct_rate` (fraction scoring at the ceiling,
+    matching your paper's own Figure 1 metric) and `avg_tokens` (raw response length). All four
+    come from ONE score_response call and ONE tokenization pass per response, not four, to avoid
+    quadrupling judge API cost. The same four are ALSO computed for the Prompt-alone baseline and
+    attached to every result as prompt_fully_correct_rate/prompt_avg_tokens, so every comparison
+    has both sides without a second run. `correctness_scores` (the raw, unaggregated per-example
+    list) is kept on each result specifically so select_constrained_survivors can run a PAIRED
+    comparison against the reference candidate later. Every non-skipped result also gets
+    on_pareto_frontier (see mark_pareto_frontier) attached before returning.
 
     candidates: each a dict with at least {"layer", "mse_weight", "nll_weight"} and whatever
     else that variant's retrain function needs (e.g. "alpha"). Usually rows pulled straight from
@@ -214,24 +289,112 @@ def evaluate_candidates(
         if hook_fn is None:
             del prompts_by_group[group_id]  # don't waste batch rows generating something we'll discard
 
-    responses_by_group: dict[int, list[str]] = {}
+    # The Prompt-alone baseline: the actual instructed prompt, no hook, and deliberately no entry
+    # in layer_by_group at all -- generate_with_routed_configs treats a group absent from
+    # layer_by_group as never touched by any layer's routed hook, which is exactly "no steering,"
+    # the same mechanism already used for baseline rows elsewhere in this file.
+    terse_prompts = [item["terse_prompt"] for item in items]
+    prompts_by_group[_PROMPT_BASELINE_GROUP] = terse_prompts
+
+    responses_by_group: dict[Any, list[str]] = {}
     for chunk_group_ids in _chunk_groups_by_row_budget(prompts_by_group, max_batch_rows):
         chunk_prompts = {g: prompts_by_group[g] for g in chunk_group_ids}
         chunk_hooks = {g: hook_fns_by_group[g] for g in chunk_group_ids if g in hook_fns_by_group}
-        chunk_layers = {g: layer_by_group[g] for g in chunk_group_ids}
+        chunk_layers = {g: layer_by_group[g] for g in chunk_group_ids if g in layer_by_group}
         chunk_responses = generate_with_routed_configs(ctx.model, ctx.tokenizer, chunk_prompts, chunk_hooks, chunk_layers)
         responses_by_group.update(chunk_responses)
 
     primary_field = eval_adapter.SCORE_FIELDS[0]
+    resolved_optimize_field = optimize_field
+    if resolved_optimize_field is None and "conciseness" in eval_adapter.SCORE_FIELDS:
+        resolved_optimize_field = "conciseness"
+
+    prompt_responses = responses_by_group[_PROMPT_BASELINE_GROUP]
+    prompt_baseline_scores = [eval_adapter.score_response(row, resp)[primary_field] for row, resp in zip(rows, prompt_responses)]
+    prompt_fully_correct_rate = _fully_correct_rate(prompt_baseline_scores, primary_field_max)
+    prompt_avg_tokens = _avg_tokens(ctx, prompt_responses)
+
     results = []
     for i, candidate in enumerate(candidates):
         if i not in responses_by_group:
             results.append({**candidate, "skipped": True})
             continue
-        scores = [eval_adapter.score_response(row, resp)[primary_field] for row, resp in zip(rows, responses_by_group[i])]
-        point, lo, hi = bootstrap_ci(scores)
-        results.append({**candidate, "skipped": False, "judged_score": point, "ci_lo": lo, "ci_hi": hi, "n": len(scores)})
-    return results
+        responses = responses_by_group[i]
+        score_dicts = [eval_adapter.score_response(row, resp) for row, resp in zip(rows, responses)]
+        correctness_scores = [d[primary_field] for d in score_dicts]
+        point, lo, hi = bootstrap_ci(correctness_scores)
+
+        if resolved_optimize_field is not None:
+            optimize_scores = [d[resolved_optimize_field] for d in score_dicts]
+        else:
+            optimize_scores = [-len(ctx.tokenizer(resp)["input_ids"]) for resp in responses]  # fewer tokens = better, so negate
+        optimize_point, optimize_lo, optimize_hi = bootstrap_ci(optimize_scores)
+
+        results.append({
+            **candidate, "skipped": False, "n": len(responses),
+            "judged_score": point, "ci_lo": lo, "ci_hi": hi, "correctness_scores": correctness_scores,
+            "optimize_score": optimize_point, "optimize_ci_lo": optimize_lo, "optimize_ci_hi": optimize_hi,
+            "fully_correct_rate": _fully_correct_rate(correctness_scores, primary_field_max),
+            "avg_tokens": _avg_tokens(ctx, responses),
+            "prompt_baseline_scores": prompt_baseline_scores,
+            "prompt_fully_correct_rate": prompt_fully_correct_rate,
+            "prompt_avg_tokens": prompt_avg_tokens,
+        })
+    return mark_pareto_frontier(results)
+
+
+def select_constrained_survivors(results: list[dict], top_k: int) -> list[dict]:
+    """Constrained optimization, not a single blended metric, with TWO gates that are NOT
+    symmetric in how strictly they're enforced:
+
+    (1) HARD gate -- not statistically significantly worse than the best-in-grid candidate
+        (paired bootstrap comparison, evals.bootstrap_analysis.paired_bootstrap_diff). This one
+        genuinely eliminates candidates: don't let within-grid noise pick something needlessly
+        worse than its peers.
+    (2) SOFT gate -- not statistically significantly worse than Prompt-alone (same paired-
+        comparison logic, against `prompt_baseline_scores`). Preferred, not absolute: if there's
+        a genuine accuracy/conciseness tradeoff (the whole premise of this project), EVERY
+        candidate could legitimately lose to Prompt, and a hard floor here would mean this
+        function returns nothing, forever, which is useless. So: if at least one gate-(1)
+        survivor also clears gate (2), rank THOSE by optimize_score (conciseness) as before. If
+        NONE do, fall back to ranking gate-(1) survivors by correctness alone instead (conciseness
+        is not a safe thing to optimize for once nothing has established a real accuracy floor),
+        and flag it -- callers can tell a fallback happened via each returned result's
+        `prompt_floor_fallback` key.
+    """
+    usable = [r for r in results if not r.get("skipped", False)]
+    if not usable:
+        return []
+    reference = max(usable, key=lambda r: r["judged_score"])
+
+    grid_gate_survivors = []
+    for r in usable:
+        if r is not reference:
+            _, lo, _ = paired_bootstrap_diff(reference["correctness_scores"], r["correctness_scores"])
+            if lo > 0:  # CI on (reference - r) is entirely positive -- r is significantly worse than the grid's best
+                continue
+        grid_gate_survivors.append(r)
+
+    prompt_gate_survivors = []
+    for r in grid_gate_survivors:
+        prompt_baseline_scores = r.get("prompt_baseline_scores")
+        if prompt_baseline_scores is None:
+            prompt_gate_survivors.append(r)  # no baseline available to compare against -- can't gate, let it through
+            continue
+        _, lo, _ = paired_bootstrap_diff(prompt_baseline_scores, r["correctness_scores"])
+        if lo > 0:  # CI on (prompt - r) is entirely positive -- r is significantly worse than Prompt alone
+            continue
+        prompt_gate_survivors.append(r)
+
+    if prompt_gate_survivors:
+        winners = sorted(prompt_gate_survivors, key=lambda r: -r["optimize_score"])[:top_k]
+        return [{**r, "prompt_floor_fallback": False} for r in winners]
+
+    print("WARNING: no candidate beat or tied Prompt alone -- falling back to the highest "
+          "correctness among the grid's survivors (conciseness is NOT used to rank in this "
+          "fallback, since it isn't safe to optimize for terseness with no accuracy floor met).")
+    winners = sorted(grid_gate_survivors, key=lambda r: -r["judged_score"])[:top_k]
+    return [{**r, "prompt_floor_fallback": True} for r in winners]
 
 
 def load_existing_tiered_results(out_path: Path) -> dict[str, list[dict]]:
@@ -309,11 +472,16 @@ def run_tiered_search(
         tier1_results = evaluate_candidates(variant, tier1_candidates, ctx, adapter, eval_adapter, tier1_n, split="dev", max_batch_rows=max_batch_rows)
         write("tier1", tier1_results)
 
-    survivors = sorted((r for r in tier1_results if not r["skipped"]), key=lambda r: -r["judged_score"])[:top_k_layers]
+    survivors = select_constrained_survivors(tier1_results, top_k_layers)
     if not survivors:
         print("WARNING: every Tier 1 candidate was skipped -- nothing to search further")
         return
-    print(f"Tier 1 survivors (top {top_k_layers} by judged score): {[s['layer'] for s in survivors]}")
+    if survivors[0]["prompt_floor_fallback"]:
+        print(f"Tier 1 survivors (FALLBACK -- none beat/tied Prompt alone, ranked by correctness "
+              f"instead of conciseness): {[s['layer'] for s in survivors]}")
+    else:
+        print(f"Tier 1 survivors (top {top_k_layers} by conciseness, among those beating/tying "
+              f"Prompt and not significantly less correct than the grid's best): {[s['layer'] for s in survivors]}")
 
     if "tier2" in existing:
         print(f"Tier 2 already complete ({len(existing['tier2'])} rows) -- reusing from {out_path}")
@@ -326,17 +494,34 @@ def run_tiered_search(
         tier2_results = evaluate_candidates(variant, tier2_candidates, ctx, adapter, eval_adapter, tier2_n, split="dev", max_batch_rows=max_batch_rows)
         write("tier2", tier2_results)
 
-    winner = max((r for r in tier2_results if not r["skipped"]), key=lambda r: r["judged_score"], default=None)
+    winner_list = select_constrained_survivors(tier2_results, top_k=1)
+    winner = winner_list[0] if winner_list else None
     if winner is None:
         print("WARNING: every Tier 2 candidate was skipped -- no final confirmation run")
         return
-    print(f"Tier 2 winner: layer={winner['layer']}, {({k: v for k, v in winner.items() if k not in ('tier',)})}")
+    fallback_note = " -- FALLBACK, does not beat/tie Prompt alone" if winner["prompt_floor_fallback"] else ""
+    print(f"Tier 2 winner{fallback_note}: layer={winner['layer']}, "
+          f"{({k: v for k, v in winner.items() if k not in ('tier', 'correctness_scores', 'prompt_baseline_scores')})}")
 
     print(f"\n== Final: full-size confirmation run, n={final_n}, TEST split ==")
     final_results = evaluate_candidates(variant, [winner], ctx, adapter, eval_adapter, final_n, split="test", max_batch_rows=max_batch_rows)
     write("final", final_results)
-    print(f"Final judged score: {final_results[0]['judged_score']:.4f} "
-          f"[{final_results[0]['ci_lo']:.4f}, {final_results[0]['ci_hi']:.4f}] (95% CI, n={final_n})")
+    r = final_results[0]
+    print(f"Final correctness (judged_score, mean 0-2): {r['judged_score']:.4f} [{r['ci_lo']:.4f}, {r['ci_hi']:.4f}] (95% CI, n={final_n})")
+    print(f"Final fully_correct_rate (matches the paper's Figure 1 metric): {r['fully_correct_rate']:.4f}  "
+          f"(Prompt alone: {r['prompt_fully_correct_rate']:.4f})")
+    print(f"Final optimize_score (mean judged conciseness or -avg_tokens): {r['optimize_score']:.4f} "
+          f"[{r['optimize_ci_lo']:.4f}, {r['optimize_ci_hi']:.4f}]")
+    print(f"Final avg_tokens: {r['avg_tokens']:.1f}  (Prompt alone: {r['prompt_avg_tokens']:.1f})")
+
+    prompt_scores = r.get("prompt_baseline_scores")
+    if prompt_scores is not None:
+        diff, diff_lo, diff_hi = paired_bootstrap_diff(r["correctness_scores"], prompt_scores)
+        verdict = "SIGNIFICANTLY BEATS Prompt alone" if diff_lo > 0 else \
+                  "SIGNIFICANTLY WORSE than Prompt alone" if diff_hi < 0 else \
+                  "not significantly different from Prompt alone"
+        print(f"vs. Prompt alone (paired, n={final_n}): diff={diff:.4f} [{diff_lo:.4f}, {diff_hi:.4f}] -- {verdict}")
+
     print(f"\nWrote full tiered search log to {out_path}")
 
 
@@ -355,18 +540,27 @@ def summarize_all_variants(task: str) -> dict:
             summary[variant] = {"status": f"not yet at Final (tiers done: {sorted(existing.keys())})"}
             continue
         row = existing["final"][0]
+        vs_prompt = None
+        prompt_scores = row.get("prompt_baseline_scores")
+        if prompt_scores is not None and "correctness_scores" in row:
+            diff, lo, hi = paired_bootstrap_diff(row["correctness_scores"], prompt_scores)
+            vs_prompt = "beats Prompt" if lo > 0 else "loses to Prompt" if hi < 0 else "ties Prompt"
         summary[variant] = {
             "status": "done", "layer": row["layer"], "judged_score": row["judged_score"],
-            "ci_lo": row["ci_lo"], "ci_hi": row["ci_hi"], "n": row["n"],
+            "ci_lo": row["ci_lo"], "ci_hi": row["ci_hi"],
+            "optimize_score": row.get("optimize_score"), "optimize_ci_lo": row.get("optimize_ci_lo"),
+            "optimize_ci_hi": row.get("optimize_ci_hi"), "vs_prompt": vs_prompt, "n": row["n"],
         }
 
-    print(f"{'variant':<22}{'status':<45}{'layer':>8}{'judged_score':>15}{'95% CI':>20}")
+    print(f"{'variant':<22}{'status':<45}{'layer':>8}{'correctness':>14}{'conciseness':>14}{'vs Prompt':>16}")
     for variant, s in summary.items():
         if s["status"] != "done":
             print(f"{variant:<22}{s['status']:<45}")
             continue
-        ci = f"[{s['ci_lo']:.3f}, {s['ci_hi']:.3f}]"
-        print(f"{variant:<22}{'done':<45}{s['layer']:>8}{s['judged_score']:>15.4f}{ci:>20}")
+        correctness = f"{s['judged_score']:.3f}"
+        conciseness = f"{s['optimize_score']:.3f}" if s.get("optimize_score") is not None else "n/a"
+        vs_prompt_str = s.get("vs_prompt") or "n/a"
+        print(f"{variant:<22}{'done':<45}{s['layer']:>8}{correctness:>14}{conciseness:>14}{vs_prompt_str:>16}")
 
     out_path = adapter.RESULTS_DIR / "tiered_search_summary.json"
     with out_path.open("w") as f:

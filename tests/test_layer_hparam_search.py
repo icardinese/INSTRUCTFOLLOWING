@@ -13,9 +13,96 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import pytest
 import torch
 
 from evals.layer_hparam_search import SearchContext, best_row_per_layer, evaluate_candidates
+
+
+class _FakeTokenizer:
+    """A minimal stand-in supporting only what avg_tokens needs: __call__(text) -> {"input_ids": [...]}.
+    Token count == character count -- doesn't need to be realistic, just deterministic and callable."""
+    def __call__(self, text):
+        return {"input_ids": list(text)}
+
+
+# ---------------------------------------------------------------------------
+# The three new REPORTED-only additions: fully_correct_rate (matches the paper's own Figure 1
+# metric), avg_tokens (raw response length), and the Pareto frontier flag. None of these three
+# feed into select_constrained_survivors -- tested directly, in isolation, precisely so a future
+# change can't accidentally wire one of them into a selection decision without a test noticing.
+# ---------------------------------------------------------------------------
+
+
+def test_fully_correct_rate_counts_only_exact_ceiling_scores():
+    from evals.layer_hparam_search import _fully_correct_rate
+
+    scores = [2, 2, 1, 0, 2]  # 3 out of 5 hit the ceiling (2); the 1 does NOT count as partial credit
+    assert _fully_correct_rate(scores, primary_field_max=2) == 0.6
+
+
+def test_fully_correct_rate_respects_a_different_ceiling():
+    from evals.layer_hparam_search import _fully_correct_rate
+
+    scores = [1, 1, 0]  # e.g. ifeval's binary follow_all_instructions field, ceiling=1
+    assert _fully_correct_rate(scores, primary_field_max=1) == pytest.approx(2 / 3)
+
+
+def test_avg_tokens_uses_the_tokenizer_not_the_judge():
+    from evals.layer_hparam_search import _avg_tokens
+
+    ctx = SearchContext(
+        model=object(), tokenizer=_FakeTokenizer(), n_layers=10, hidden_size=16, cache_dir=Path("/tmp"),
+        train_items=[], dev_items=[], train_responses={}, dev_responses={},
+    )
+    responses = ["ab", "abcd"]  # _FakeTokenizer: 1 token per character
+    assert _avg_tokens(ctx, responses) == 3.0  # mean(2, 4)
+
+
+def test_mark_pareto_frontier_identifies_non_dominated_candidates():
+    from evals.layer_hparam_search import mark_pareto_frontier
+
+    results = [
+        {"layer": 2, "skipped": False, "judged_score": 2.0, "optimize_score": 1.0},  # best correctness -- on frontier
+        {"layer": 4, "skipped": False, "judged_score": 1.0, "optimize_score": 3.0},  # best conciseness -- on frontier
+        {"layer": 6, "skipped": False, "judged_score": 1.0, "optimize_score": 1.0},  # strictly worse than layer 2 on BOTH -- dominated
+        {"layer": 8, "skipped": True},  # skipped -- must get None, not True/False
+    ]
+    marked = mark_pareto_frontier(results)
+    by_layer = {r["layer"]: r["on_pareto_frontier"] for r in marked}
+    assert by_layer[2] is True
+    assert by_layer[4] is True
+    assert by_layer[6] is False, "layer 6 is dominated by layer 2 on both axes -- must not be on the frontier"
+    assert by_layer[8] is None, "a skipped candidate isn't comparable at all -- must be None, not False"
+
+
+def test_evaluate_candidates_attaches_all_four_new_reported_metrics(monkeypatch):
+    """Integration check that evaluate_candidates itself (not just the helper functions in
+    isolation) actually wires fully_correct_rate/avg_tokens/prompt_fully_correct_rate/
+    prompt_avg_tokens/on_pareto_frontier into every result, using the real score_response and a
+    real (fake) tokenizer end to end."""
+    candidates = [{"layer": 2, "mse_weight": 1.0, "nll_weight": 0.0}]
+    ctx = SearchContext(
+        model=object(), tokenizer=_FakeTokenizer(), n_layers=10, hidden_size=16, cache_dir=Path("/tmp"),
+        train_items=[], dev_items=[], train_responses={}, dev_responses={},
+    )
+
+    def fake_retrain(row, ctx):
+        return "some_hook"
+
+    def fake_generate(model, tokenizer, prompts_by_group, hooks_by_group, layer_by_group):
+        return {0: ["resp_2", "resp_2", "resp_0"], "__prompt_baseline__": ["resp_2", "resp_2", "resp_2"]}
+
+    with patch("evals.layer_hparam_search.RETRAIN_FNS", {"proper": fake_retrain}), \
+         patch("evals.layer_hparam_search.generate_with_routed_configs", side_effect=fake_generate):
+        results = evaluate_candidates("proper", candidates, ctx, _FakeAdapter(), _FakeEvalAdapter(), n_examples=3)
+
+    r = results[0]
+    assert r["fully_correct_rate"] == pytest.approx(2 / 3)  # two "resp_2" (score=2, the ceiling), one "resp_0"
+    assert r["prompt_fully_correct_rate"] == 1.0  # all three baseline responses are "resp_2"
+    assert r["avg_tokens"] > 0
+    assert r["prompt_avg_tokens"] > 0
+    assert r["on_pareto_frontier"] is True  # the only non-skipped candidate -- trivially on the frontier
 
 
 def test_best_row_per_layer_picks_lowest_mse_per_layer():
@@ -42,12 +129,12 @@ def test_best_row_per_layer_excludes_skipped_and_incomplete_rows():
 
 
 class _FakeEvalAdapter:
-    SCORE_FIELDS = ["correct"]
+    SCORE_FIELDS = ["correct", "conciseness"]
 
     @staticmethod
     def score_response(row, response):
         # deterministic score derived from the response text so tests can assert on it precisely
-        return {"correct": int(response.split("_")[-1])}
+        return {"correct": int(response.split("_")[-1]), "conciseness": 1.0}
 
 
 class _FakeAdapter:
@@ -58,7 +145,7 @@ class _FakeAdapter:
         return [{"id": str(i)} for i in range(3)]
 
     def to_items(self, tokenizer, rows):
-        return [{"id": r["id"], "base_prompt": f"prompt_{r['id']}"} for r in rows]
+        return [{"id": r["id"], "base_prompt": f"prompt_{r['id']}", "terse_prompt": f"terse_prompt_{r['id']}"} for r in rows]
 
 
 def test_evaluate_candidates_retrains_judges_and_computes_ci():
@@ -70,7 +157,7 @@ def test_evaluate_candidates_retrains_judges_and_computes_ci():
         {"layer": 4, "mse_weight": 1.0, "nll_weight": 0.0},
     ]
     ctx = SearchContext(
-        model=object(), tokenizer=object(), n_layers=10, hidden_size=16, cache_dir=Path("/tmp"),
+        model=object(), tokenizer=_FakeTokenizer(), n_layers=10, hidden_size=16, cache_dir=Path("/tmp"),
         train_items=[], dev_items=[], train_responses={}, dev_responses={},
     )
 
@@ -80,6 +167,7 @@ def test_evaluate_candidates_retrains_judges_and_computes_ci():
     fake_responses_by_group = {
         0: ["resp_1", "resp_2", "resp_0"],  # layer 2's candidate: scores [1, 2, 0]
         1: ["resp_2", "resp_2", "resp_2"],  # layer 4's candidate: scores [2, 2, 2]
+        "__prompt_baseline__": ["resp_1", "resp_1", "resp_1"],  # Prompt-alone baseline, same n
     }
 
     with patch("evals.layer_hparam_search.RETRAIN_FNS", {"proper": fake_retrain}), \
@@ -100,7 +188,7 @@ def test_evaluate_candidates_marks_skipped_when_retrain_returns_none():
     candidate must be marked skipped, not silently dropped or crashed on."""
     candidates = [{"layer": 2, "alpha": 1e6, "mse_weight": 1.0, "nll_weight": 0.0}]
     ctx = SearchContext(
-        model=object(), tokenizer=object(), n_layers=10, hidden_size=16, cache_dir=Path("/tmp"),
+        model=object(), tokenizer=_FakeTokenizer(), n_layers=10, hidden_size=16, cache_dir=Path("/tmp"),
         train_items=[], dev_items=[], train_responses={}, dev_responses={},
     )
 
@@ -108,7 +196,7 @@ def test_evaluate_candidates_marks_skipped_when_retrain_returns_none():
         return None
 
     with patch("evals.layer_hparam_search.RETRAIN_FNS", {"proper": fake_retrain_returns_none}), \
-         patch("evals.layer_hparam_search.generate_with_routed_configs", return_value={}):
+         patch("evals.layer_hparam_search.generate_with_routed_configs", return_value={"__prompt_baseline__": ["resp_1", "resp_1", "resp_1"]}):
         results = evaluate_candidates("proper", candidates, ctx, _FakeAdapter(), _FakeEvalAdapter(), n_examples=3)
 
     assert len(results) == 1
@@ -116,16 +204,136 @@ def test_evaluate_candidates_marks_skipped_when_retrain_returns_none():
     assert "judged_score" not in results[0]
 
 
-def test_tier_progression_narrows_by_judged_score_not_mse():
-    """The core methodological claim: a layer with WORSE mse (higher final_mse) but BETTER judged
-    score must be able to survive over a layer with better mse but worse judged score -- proving
-    MSE genuinely has no vote in which layers survive Tier 1."""
-    tier1_results = [
-        {"layer": 2, "final_mse": 1.0, "judged_score": 0.2, "skipped": False},   # great MSE, bad judged score
-        {"layer": 4, "final_mse": 9.0, "judged_score": 0.9, "skipped": False},   # bad MSE, great judged score
+def test_select_constrained_survivors_mse_has_no_vote():
+    """The original methodological claim still holds: nothing in this function ever looks at
+    final_mse (it isn't even passed a candidate's MSE) -- survival is decided purely from judged
+    correctness scores."""
+    from evals.layer_hparam_search import select_constrained_survivors
+
+    results = [
+        {"layer": 2, "skipped": False, "correctness_scores": [2.0] * 20, "judged_score": 2.0, "optimize_score": 0.5},
+        {"layer": 4, "skipped": False, "correctness_scores": [2.0] * 20, "judged_score": 2.0, "optimize_score": 1.5},
     ]
-    survivors = sorted((r for r in tier1_results if not r["skipped"]), key=lambda r: -r["judged_score"])[:1]
-    assert survivors[0]["layer"] == 4, "the judged-score winner must survive even with far worse training MSE"
+    survivors = select_constrained_survivors(results, top_k=2)
+    assert {s["layer"] for s in survivors} == {2, 4}, "final_mse was never even provided -- both must survive on correctness alone"
+
+
+def test_select_constrained_survivors_excludes_a_significantly_less_correct_candidate_even_if_more_concise():
+    """The actual point of this whole feature: a candidate that's dramatically MORE concise but
+    SIGNIFICANTLY less correct must be excluded, not win just because it optimizes the metric
+    everyone actually wants to move."""
+    from evals.layer_hparam_search import select_constrained_survivors
+
+    results = [
+        {"layer": 2, "skipped": False, "correctness_scores": [2.0] * 20, "judged_score": 2.0, "optimize_score": 1.0},  # best correctness, mediocre conciseness
+        {"layer": 4, "skipped": False, "correctness_scores": [0.0] * 20, "judged_score": 0.0, "optimize_score": 100.0},  # terrible correctness, amazing conciseness
+    ]
+    survivors = select_constrained_survivors(results, top_k=2)
+    assert [s["layer"] for s in survivors] == [2], "layer 4 must be excluded -- a 2.0 vs 0.0 gap with zero variance is maximally significant"
+
+
+def test_select_constrained_survivors_ranks_by_conciseness_among_gate_passing_candidates():
+    """Once correctness has gated out anything significantly worse, ranking among the survivors
+    must be by conciseness (optimize_score), NOT by correctness -- e.g. two candidates with
+    statistically indistinguishable correctness (same mean, genuine two-sided paired noise, not a
+    one-sided gap) must be ordered by whichever is more concise."""
+    from evals.layer_hparam_search import select_constrained_survivors
+
+    results = [
+        {"layer": 2, "skipped": False, "correctness_scores": [2.0, 1.8] * 10, "judged_score": 1.9, "optimize_score": 0.5},   # same mean correctness, LESS concise
+        {"layer": 4, "skipped": False, "correctness_scores": [1.8, 2.0] * 10, "judged_score": 1.9, "optimize_score": 2.0},   # same mean correctness, MORE concise
+    ]
+    survivors = select_constrained_survivors(results, top_k=1)
+    assert survivors[0]["layer"] == 4, "identical mean correctness with genuine two-sided noise must not be flagged significant -- conciseness should decide"
+
+
+def test_select_constrained_survivors_returns_empty_for_no_usable_candidates():
+    from evals.layer_hparam_search import select_constrained_survivors
+
+    assert select_constrained_survivors([{"layer": 2, "skipped": True}], top_k=3) == []
+    assert select_constrained_survivors([], top_k=3) == []
+
+
+def test_select_constrained_survivors_falls_back_to_correctness_when_everyone_loses_to_prompt():
+    """The soft-floor design: when NOTHING clears the Prompt gate (a genuine accuracy/conciseness
+    tradeoff, or just a bad grid), this must NOT return empty -- it falls back to the highest
+    correctness among the grid's own survivors, flagged via prompt_floor_fallback=True, and
+    ranks by correctness (NOT conciseness) in that fallback -- a candidate with worse correctness
+    but better conciseness must lose the fallback ranking, since optimizing conciseness isn't
+    safe once nothing has met a real accuracy bar. Test data numerically verified (not just
+    eyeballed) to (a) NOT be significantly different from each other -- both survive gate 1 --
+    and (b) both be significantly worse than Prompt -- both fail gate 2 -- before relying on it."""
+    from evals.layer_hparam_search import select_constrained_survivors
+
+    prompt_scores = [2.0] * 20
+    results = [
+        {"layer": 2, "skipped": False, "correctness_scores": [0.0, 1.0] * 10, "judged_score": 0.5,
+         "optimize_score": 5.0, "prompt_baseline_scores": prompt_scores},   # worse correctness, MUCH more concise
+        {"layer": 4, "skipped": False, "correctness_scores": [1.0, 0.5] * 10, "judged_score": 0.75,
+         "optimize_score": 1.0, "prompt_baseline_scores": prompt_scores},   # better correctness, less concise
+    ]
+    survivors = select_constrained_survivors(results, top_k=2)
+    assert len(survivors) == 2, "fallback must still return candidates, not an empty list"
+    assert all(s["prompt_floor_fallback"] for s in survivors), "every returned candidate must be flagged as a fallback pick"
+    assert survivors[0]["layer"] == 4, "the fallback ranks by CORRECTNESS -- layer 4 (better correctness, worse conciseness) must rank first"
+
+
+def test_select_constrained_survivors_does_not_flag_fallback_when_prompt_gate_is_cleared():
+    """The normal (non-fallback) path must explicitly mark prompt_floor_fallback=False, so
+    callers can always check the flag without a KeyError regardless of which path was taken."""
+    from evals.layer_hparam_search import select_constrained_survivors
+
+    prompt_scores = [0.0] * 20  # trivially easy to beat
+    results = [
+        {"layer": 2, "skipped": False, "correctness_scores": [2.0] * 20, "judged_score": 2.0,
+         "optimize_score": 1.0, "prompt_baseline_scores": prompt_scores},
+    ]
+    survivors = select_constrained_survivors(results, top_k=1)
+    assert survivors[0]["prompt_floor_fallback"] is False
+
+
+def test_select_constrained_survivors_keeps_a_candidate_that_beats_prompt():
+    """The positive case: a candidate that's statistically indistinguishable from (or better
+    than) Prompt alone must survive the Prompt gate even if it isn't the single best-in-grid."""
+    from evals.layer_hparam_search import select_constrained_survivors
+
+    prompt_scores = [2.0, 1.9] * 10  # mean 1.95, genuine two-sided variance
+    results = [
+        {"layer": 2, "skipped": False, "correctness_scores": [2.0, 1.9] * 10, "judged_score": 1.95,
+         "optimize_score": 1.0, "prompt_baseline_scores": prompt_scores},  # same distribution as Prompt, less concise
+        {"layer": 4, "skipped": False, "correctness_scores": [1.9, 2.0] * 10, "judged_score": 1.95,
+         "optimize_score": 3.0, "prompt_baseline_scores": prompt_scores},  # same mean, out of phase (genuine 2-sided diff), much more concise
+    ]
+    survivors = select_constrained_survivors(results, top_k=1)
+    assert survivors[0]["layer"] == 4, "layer 4 is statistically tied with both the grid's best and Prompt alone -- its far better conciseness should win"
+
+
+def test_evaluate_candidates_attaches_a_real_paired_prompt_baseline_to_every_result():
+    """evaluate_candidates itself (not the selection function) must compute and attach
+    prompt_baseline_scores -- generated via the terse_prompt with no steering hook, on the exact
+    same rows as every candidate, so it's validly pairable against them later."""
+    candidates = [{"layer": 2, "mse_weight": 1.0, "nll_weight": 0.0}]
+    ctx = SearchContext(
+        model=object(), tokenizer=_FakeTokenizer(), n_layers=10, hidden_size=16, cache_dir=Path("/tmp"),
+        train_items=[], dev_items=[], train_responses={}, dev_responses={},
+    )
+
+    def fake_retrain(row, ctx):
+        return "some_hook"
+
+    def fake_generate(model, tokenizer, prompts_by_group, hooks_by_group, layer_by_group):
+        # Confirm the baseline group used terse_prompt (not base_prompt) and got NO hook/layer entry.
+        assert "__prompt_baseline__" in prompts_by_group
+        assert prompts_by_group["__prompt_baseline__"] == ["terse_prompt_0", "terse_prompt_1", "terse_prompt_2"]
+        assert "__prompt_baseline__" not in hooks_by_group
+        assert "__prompt_baseline__" not in layer_by_group
+        return {0: ["resp_1"] * 3, "__prompt_baseline__": ["resp_2"] * 3}
+
+    with patch("evals.layer_hparam_search.RETRAIN_FNS", {"proper": fake_retrain}), \
+         patch("evals.layer_hparam_search.generate_with_routed_configs", side_effect=fake_generate):
+        results = evaluate_candidates("proper", candidates, ctx, _FakeAdapter(), _FakeEvalAdapter(), n_examples=3)
+
+    assert results[0]["prompt_baseline_scores"] == [2, 2, 2]  # "resp_2" -> correct=2, per _FakeEvalAdapter
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +395,9 @@ def test_run_tiered_search_reuses_tier1_and_only_runs_tier2_and_final(tmp_path, 
 
     out_path = tmp_path / "proper_tiered_search.jsonl"
     out_path.write_text(
-        json.dumps({"tier": "tier1", "layer": 14, "mse_weight": 1.0, "nll_weight": 0.0, "skipped": False, "judged_score": 1.9, "ci_lo": 1.8, "ci_hi": 2.0, "n": 20}) + "\n"
+        json.dumps({"tier": "tier1", "layer": 14, "mse_weight": 1.0, "nll_weight": 0.0, "skipped": False,
+                    "judged_score": 1.9, "ci_lo": 1.8, "ci_hi": 2.0, "correctness_scores": [1.9] * 20,
+                    "optimize_score": 1.0, "optimize_ci_lo": 1.0, "optimize_ci_hi": 1.0, "n": 20}) + "\n"
     )
     (tmp_path / "psr_proper_sweep.jsonl").write_text(
         json.dumps({"layer": 14, "mse_weight": 1.0, "nll_weight": 0.0, "final_mse": 1.0}) + "\n"
@@ -202,7 +412,7 @@ def test_run_tiered_search_reuses_tier1_and_only_runs_tier2_and_final(tmp_path, 
             return [{"id": "0"}]
 
         def to_items(self, tokenizer, rows):
-            return [{"id": "0", "base_prompt": "p"}]
+            return [{"id": "0", "base_prompt": "p", "terse_prompt": "tp"}]
 
     monkeypatch.setattr(mod, "get_adapter", lambda task: _Adapter())
     monkeypatch.setattr(mod, "get_eval_adapter", lambda task: _FakeEvalAdapter())
@@ -220,7 +430,11 @@ def test_run_tiered_search_reuses_tier1_and_only_runs_tier2_and_final(tmp_path, 
     def fake_evaluate_candidates(variant, candidates, ctx, adapter, eval_adapter, n_examples, split="dev", max_batch_rows=None):
         calls.append((n_examples, split, len(candidates)))
         # Tier 2 and Final both go through this fake -- return a plausible winner each time.
-        return [{**c, "skipped": False, "judged_score": 1.95, "ci_lo": 1.9, "ci_hi": 2.0, "n": n_examples} for c in candidates]
+        return [{**c, "skipped": False, "judged_score": 1.95, "ci_lo": 1.9, "ci_hi": 2.0,
+                 "correctness_scores": [1.95] * n_examples, "optimize_score": 1.0,
+                 "optimize_ci_lo": 1.0, "optimize_ci_hi": 1.0, "n": n_examples,
+                 "fully_correct_rate": 0.9, "avg_tokens": 20.0,
+                 "prompt_fully_correct_rate": 0.8, "prompt_avg_tokens": 50.0} for c in candidates]
 
     monkeypatch.setattr(mod, "evaluate_candidates", fake_evaluate_candidates)
     mod.run_tiered_search("caveman", "proper", tier1_n=20, tier2_n=20, final_n=180)
@@ -257,7 +471,7 @@ def test_evaluate_candidates_never_calls_generate_with_more_rows_than_the_cap():
     final per-candidate judged scores must still be correct regardless of how it got chunked."""
     candidates = [{"layer": l, "mse_weight": 1.0, "nll_weight": 0.0} for l in [2, 4, 6, 8, 10]]
     ctx = SearchContext(
-        model=object(), tokenizer=object(), n_layers=20, hidden_size=16, cache_dir=Path("/tmp"),
+        model=object(), tokenizer=_FakeTokenizer(), n_layers=20, hidden_size=16, cache_dir=Path("/tmp"),
         train_items=[], dev_items=[], train_responses={}, dev_responses={},
     )
 
@@ -271,24 +485,28 @@ def test_evaluate_candidates_never_calls_generate_with_more_rows_than_the_cap():
         call_sizes.append(total_rows)
         # Each group's "score" is its own LAYER (via layer_by_group), not the raw group index --
         # so the final assertion can check the right candidate's result landed in the right slot
-        # regardless of which chunk it was computed in.
-        return {g: [f"resp_{layer_by_group[g]}"] * len(prompts) for g, prompts in prompts_by_group.items()}
+        # regardless of which chunk it was computed in. The baseline group has no layer_by_group
+        # entry at all (that's the point -- it's never hooked), so it gets a fixed placeholder.
+        return {
+            g: [f"resp_{layer_by_group[g]}" if g in layer_by_group else "resp_1"] * len(prompts)
+            for g, prompts in prompts_by_group.items()
+        }
 
     fake_rows = [{"id": str(i)} for i in range(20)]
 
     class _ScoringEvalAdapter:
-        SCORE_FIELDS = ["correct"]
+        SCORE_FIELDS = ["correct", "conciseness"]
 
         @staticmethod
         def score_response(row, response):
-            return {"correct": int(response.split("_")[-1])}  # score == the group_id, by construction
+            return {"correct": int(response.split("_")[-1]), "conciseness": 1.0}  # score == the layer, by construction
 
     class _Adapter20:
         def load_rows(self, split):
             return fake_rows
 
         def to_items(self, tokenizer, rows):
-            return [{"id": r["id"], "base_prompt": f"prompt_{r['id']}"} for r in rows]
+            return [{"id": r["id"], "base_prompt": f"prompt_{r['id']}", "terse_prompt": f"terse_prompt_{r['id']}"} for r in rows]
 
     with patch("evals.layer_hparam_search.RETRAIN_FNS", {"proper": fake_retrain}), \
          patch("evals.layer_hparam_search.generate_with_routed_configs", side_effect=fake_generate_with_routed_configs):

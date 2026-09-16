@@ -1,0 +1,24 @@
+################################################################
+# Layer/hyperparameter search starting at Wed Sep 16 08:13:07 AM UTC 2026
+# Task=caveman  variants=[proper conceptor conceptor_matrix conceptor_selfproj]  tier1_n=20 tier2_n=20 final_n=180 top_k=3 max_batch_rows=60
+# Log: results/caveman/layer_search_20260916_081307.log
+################################################################
+
+== pre-flight checks ==
+openai.key: found
+CUDA: available
+sweep files: found for every requested variant
+pre-flight checks passed -- proceeding.
+
+== [2026-09-16 08:13:09] START: layer/hyperparameter search: proper ==
+results/caveman/proper_tiered_search.jsonl already has a Final result for 'proper' -- fully done, skipping. Delete results/caveman/proper_tiered_search.jsonl (or just its 'final' row) to force a rerun.
+== [2026-09-16 08:13:19] OK: layer/hyperparameter search: proper ==
+
+== [2026-09-16 08:13:19] START: layer/hyperparameter search: conceptor ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:25,  3.95it/s]Loading weights:   1%|          | 2/339 [00:00<01:34,  3.58it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.72it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 35.81it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 53.04it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 65.12it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 73.78it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 80.02it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 84.40it/s]Loading weights:  26%|██▋       | 89/339 [00:01<00:02, 84.94it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 90.47it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 91.87it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 92.44it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 93.04it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:02, 93.80it/s]Loading weights:  47%|████▋     | 161/339 [00:02<00:01, 91.82it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 94.91it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 94.63it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 93.99it/s]Loading weights:  61%|██████▏   | 208/339 [00:02<00:01, 88.77it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 94.21it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 93.20it/s]Loading weights:  72%|███████▏  | 245/339 [00:03<00:01, 91.34it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 94.75it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 94.29it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 94.49it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 94.99it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 95.37it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 94.67it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 94.82it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 82.35it/s]
+Tier 1 already complete (13 rows) -- reusing from results/caveman/conceptor_tiered_search.jsonl
+Tier 1 survivors (top 3 by judged score): [2, 4, 8]
+
+== Tier 2: hyperparameter sweep at surviving layer(s), n=20 ==
+75 (layer, hyperparameter) combos to evaluate at the surviving layer(s)
