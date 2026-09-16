@@ -1,0 +1,200 @@
+################################################################
+# Layer/hyperparameter search starting at Wed Sep 16 09:23:33 AM UTC 2026
+# Task=caveman  variants=[proper conceptor conceptor_matrix conceptor_selfproj]  tier1_n=20 tier2_n=20 final_n=180 top_k=3 max_batch_rows=60
+# Log: results/caveman/layer_search_20260916_092333.log
+################################################################
+
+== pre-flight checks ==
+openai.key: found
+CUDA: available
+sweep files: found for every requested variant
+pre-flight checks passed -- proceeding.
+
+== [2026-09-16 09:23:35] START: layer/hyperparameter search: proper ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:25,  3.96it/s]Loading weights:   1%|          | 2/339 [00:00<01:33,  3.60it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.76it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 35.68it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 52.97it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 65.16it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 73.95it/s]Loading weights:  19%|█▉        | 64/339 [00:01<00:03, 75.56it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 86.19it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 88.85it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 90.84it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.31it/s]Loading weights:  37%|███▋      | 125/339 [00:01<00:02, 90.86it/s]Loading weights:  40%|████      | 137/339 [00:02<00:02, 92.30it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 95.80it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 95.58it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.52it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 95.57it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.78it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.76it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 95.79it/s]Loading weights:  69%|██████▊   | 233/339 [00:03<00:01, 93.36it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.45it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 95.79it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 95.72it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.00it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 95.97it/s]Loading weights:  90%|████████▉ | 305/339 [00:03<00:00, 93.63it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.56it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.24it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.28it/s]
+== Tier 1: layer sweep, n=20, real judged evaluation decides survivors ==
+13 layers to evaluate (MSE-best hyperparameter combo per layer)
+Tier 1 survivors (top 3 by conciseness, among those beating/tying Prompt and not significantly less correct than the grid's best): [2, 8, 10]
+
+== Tier 2: hyperparameter sweep at surviving layer(s), n=20 ==
+15 (layer, hyperparameter) combos to evaluate at the surviving layer(s)
+Tier 2 winner: layer=2, {'layer': 2, 'mse_weight': 1.0, 'nll_weight': 0.1, 'baseline_mse': 34.53213451385498, 'baseline_nll': 60.48603965759278, 'final_mse': 7.819262614250183, 'final_nll': 35.525405387878415, 'skipped': False, 'n': 20, 'judged_score': 2.0, 'ci_lo': 2.0, 'ci_hi': 2.0, 'optimize_score': 1.0, 'optimize_ci_lo': 1.0, 'optimize_ci_hi': 1.0, 'fully_correct_rate': 1.0, 'avg_tokens': 149.1, 'prompt_fully_correct_rate': 0.9, 'prompt_avg_tokens': 60.65, 'on_pareto_frontier': True, 'prompt_floor_fallback': False}
+
+== Final: full-size confirmation run, n=180, TEST split ==
+Final correctness (judged_score, mean 0-2): 1.9500 [1.9167, 1.9833] (95% CI, n=180)
+Final fully_correct_rate (matches the paper's Figure 1 metric): 0.9500  (Prompt alone: 0.9444)
+Final optimize_score (mean judged conciseness or -avg_tokens): 0.9667 [0.9389, 0.9889]
+Final avg_tokens: 147.9  (Prompt alone: 57.8)
+vs. Prompt alone (paired, n=180): diff=0.0056 [-0.0333, 0.0444] -- not significantly different from Prompt alone
+
+Wrote full tiered search log to results/caveman/proper_tiered_search.jsonl
+== [2026-09-16 10:36:01] OK: layer/hyperparameter search: proper ==
+
+== [2026-09-16 10:36:01] START: layer/hyperparameter search: conceptor ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:26,  1.63it/s]Loading weights:   5%|▍         | 16/339 [00:00<00:11, 28.30it/s]Loading weights:   8%|▊         | 28/339 [00:00<00:07, 41.67it/s]Loading weights:  12%|█▏        | 39/339 [00:01<00:05, 52.46it/s]Loading weights:  16%|█▌        | 53/339 [00:01<00:04, 67.64it/s]Loading weights:  19%|█▉        | 64/339 [00:01<00:03, 73.06it/s]Loading weights:  23%|██▎       | 77/339 [00:01<00:03, 74.78it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:03, 82.22it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 85.89it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 88.35it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 90.38it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 91.99it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:02, 93.20it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 94.01it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 94.66it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 94.85it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.28it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.40it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 95.53it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 95.83it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.04it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 95.47it/s]Loading weights:  79%|███████▉  | 268/339 [00:03<00:00, 91.06it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 97.32it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 97.13it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 96.79it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.59it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.62it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 82.79it/s]
+== Tier 1: layer sweep, n=20, real judged evaluation decides survivors ==
+13 layers to evaluate (MSE-best hyperparameter combo per layer)
+Tier 1 survivors (top 3 by conciseness, among those beating/tying Prompt and not significantly less correct than the grid's best): [4, 10, 12]
+
+== Tier 2: hyperparameter sweep at surviving layer(s), n=20 ==
+75 (layer, hyperparameter) combos to evaluate at the surviving layer(s)
+Tier 2 winner: layer=4, {'layer': 4, 'alpha': 1.0, 'mse_weight': 1.0, 'nll_weight': 0.0, 'baseline_mse': 34.50596170425415, 'baseline_nll': 60.443502044677736, 'final_mse': 30.109805545806886, 'final_nll': 55.945643005371096, 'skipped': False, 'n': 20, 'judged_score': 2.0, 'ci_lo': 2.0, 'ci_hi': 2.0, 'optimize_score': 1.0, 'optimize_ci_lo': 1.0, 'optimize_ci_hi': 1.0, 'fully_correct_rate': 1.0, 'avg_tokens': 149.85, 'prompt_fully_correct_rate': 0.9, 'prompt_avg_tokens': 60.65, 'on_pareto_frontier': True, 'prompt_floor_fallback': False}
+
+== Final: full-size confirmation run, n=180, TEST split ==
+Final correctness (judged_score, mean 0-2): 1.9611 [1.9278, 1.9889] (95% CI, n=180)
+Final fully_correct_rate (matches the paper's Figure 1 metric): 0.9611  (Prompt alone: 0.9444)
+Final optimize_score (mean judged conciseness or -avg_tokens): 0.9556 [0.9222, 0.9833]
+Final avg_tokens: 149.9  (Prompt alone: 57.8)
+vs. Prompt alone (paired, n=180): diff=0.0167 [-0.0278, 0.0611] -- not significantly different from Prompt alone
+
+Wrote full tiered search log to results/caveman/conceptor_tiered_search.jsonl
+== [2026-09-16 13:50:32] OK: layer/hyperparameter search: conceptor ==
+
+== [2026-09-16 13:50:32] START: layer/hyperparameter search: conceptor_matrix ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:25,  3.94it/s]Loading weights:   1%|          | 2/339 [00:00<01:33,  3.60it/s]Loading weights:   1%|▏         | 5/339 [00:00<00:35,  9.54it/s]Loading weights:   5%|▌         | 17/339 [00:00<00:09, 34.52it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 54.73it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 66.72it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 75.22it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 80.78it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 85.34it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 88.48it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 90.84it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.50it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 93.64it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 94.34it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 95.21it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 95.09it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.27it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 95.05it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.65it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.91it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.47it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.55it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.57it/s]Loading weights:  76%|███████▌  | 257/339 [00:03<00:00, 94.07it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 97.19it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.45it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.51it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 95.69it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.06it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.22it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.73it/s]
+== Tier 1: layer sweep, n=20, real judged evaluation decides survivors ==
+13 layers to evaluate (MSE-best hyperparameter combo per layer)
+layer=2 alpha=16.0 delta_scale=26.98 participation_ratio=3179.139
+layer=4 alpha=16.0 delta_scale=37.34 participation_ratio=3499.019
+layer=6 alpha=16.0 delta_scale=46.97 participation_ratio=3552.229
+layer=8 alpha=16.0 delta_scale=60.97 participation_ratio=3572.072
+layer=10 alpha=16.0 delta_scale=63.33 participation_ratio=3560.603
+layer=12 alpha=16.0 delta_scale=66.92 participation_ratio=3566.050
+layer=14 alpha=16.0 delta_scale=73.24 participation_ratio=3568.633
+layer=16 alpha=8.0 delta_scale=83.29 participation_ratio=3530.885
+layer=18 alpha=8.0 delta_scale=99.53 participation_ratio=3559.072
+layer=20 alpha=4.0 delta_scale=137.58 participation_ratio=3527.682
+layer=22 alpha=8.0 delta_scale=200.87 participation_ratio=3582.851
+layer=24 alpha=16.0 delta_scale=270.39 participation_ratio=3583.979
+layer=26 alpha=4.0 delta_scale=354.85 participation_ratio=3582.555
+Tier 1 survivors (top 3 by conciseness, among those beating/tying Prompt and not significantly less correct than the grid's best): [10, 12, 18]
+
+== Tier 2: hyperparameter sweep at surviving layer(s), n=20 ==
+75 (layer, hyperparameter) combos to evaluate at the surviving layer(s)
+layer=10 alpha=1.0 delta_scale=53.90 participation_ratio=1477.464
+layer=10 alpha=1.0 delta_scale=53.90 participation_ratio=1477.464
+layer=10 alpha=1.0 delta_scale=53.90 participation_ratio=1477.464
+layer=10 alpha=1.0 delta_scale=53.90 participation_ratio=1477.464
+layer=10 alpha=1.0 delta_scale=53.90 participation_ratio=1477.464
+layer=10 alpha=2.0 delta_scale=58.93 participation_ratio=2243.903
+layer=10 alpha=2.0 delta_scale=58.93 participation_ratio=2243.903
+layer=10 alpha=2.0 delta_scale=58.93 participation_ratio=2243.903
+layer=10 alpha=2.0 delta_scale=58.93 participation_ratio=2243.903
+layer=10 alpha=2.0 delta_scale=58.93 participation_ratio=2243.903
+layer=10 alpha=4.0 delta_scale=61.61 participation_ratio=2970.182
+layer=10 alpha=4.0 delta_scale=61.61 participation_ratio=2970.182
+layer=10 alpha=4.0 delta_scale=61.61 participation_ratio=2970.182
+layer=10 alpha=4.0 delta_scale=61.61 participation_ratio=2970.182
+layer=10 alpha=4.0 delta_scale=61.61 participation_ratio=2970.182
+layer=10 alpha=8.0 delta_scale=62.85 participation_ratio=3417.330
+layer=10 alpha=8.0 delta_scale=62.85 participation_ratio=3417.330
+layer=10 alpha=8.0 delta_scale=62.85 participation_ratio=3417.330
+layer=10 alpha=8.0 delta_scale=62.85 participation_ratio=3417.330
+layer=10 alpha=8.0 delta_scale=62.85 participation_ratio=3417.330
+layer=10 alpha=16.0 delta_scale=63.33 participation_ratio=3560.603
+layer=10 alpha=16.0 delta_scale=63.33 participation_ratio=3560.603
+layer=10 alpha=16.0 delta_scale=63.33 participation_ratio=3560.603
+layer=10 alpha=16.0 delta_scale=63.33 participation_ratio=3560.603
+layer=10 alpha=16.0 delta_scale=63.33 participation_ratio=3560.603
+layer=12 alpha=1.0 delta_scale=57.36 participation_ratio=1562.674
+layer=12 alpha=1.0 delta_scale=57.36 participation_ratio=1562.674
+layer=12 alpha=1.0 delta_scale=57.36 participation_ratio=1562.674
+layer=12 alpha=1.0 delta_scale=57.36 participation_ratio=1562.674
+layer=12 alpha=1.0 delta_scale=57.36 participation_ratio=1562.674
+layer=12 alpha=2.0 delta_scale=62.48 participation_ratio=2345.079
+layer=12 alpha=2.0 delta_scale=62.48 participation_ratio=2345.079
+layer=12 alpha=2.0 delta_scale=62.48 participation_ratio=2345.079
+layer=12 alpha=2.0 delta_scale=62.48 participation_ratio=2345.079
+layer=12 alpha=2.0 delta_scale=62.48 participation_ratio=2345.079
+layer=12 alpha=4.0 delta_scale=65.21 participation_ratio=3048.898
+layer=12 alpha=4.0 delta_scale=65.21 participation_ratio=3048.898
+layer=12 alpha=4.0 delta_scale=65.21 participation_ratio=3048.898
+layer=12 alpha=4.0 delta_scale=65.21 participation_ratio=3048.898
+layer=12 alpha=4.0 delta_scale=65.21 participation_ratio=3048.898
+layer=12 alpha=8.0 delta_scale=66.45 participation_ratio=3449.043
+layer=12 alpha=8.0 delta_scale=66.45 participation_ratio=3449.043
+layer=12 alpha=8.0 delta_scale=66.45 participation_ratio=3449.043
+layer=12 alpha=8.0 delta_scale=66.45 participation_ratio=3449.043
+layer=12 alpha=8.0 delta_scale=66.45 participation_ratio=3449.043
+layer=12 alpha=16.0 delta_scale=66.92 participation_ratio=3566.050
+layer=12 alpha=16.0 delta_scale=66.92 participation_ratio=3566.050
+layer=12 alpha=16.0 delta_scale=66.92 participation_ratio=3566.050
+layer=12 alpha=16.0 delta_scale=66.92 participation_ratio=3566.050
+layer=12 alpha=16.0 delta_scale=66.92 participation_ratio=3566.050
+layer=18 alpha=1.0 delta_scale=89.62 participation_ratio=2188.179
+layer=18 alpha=1.0 delta_scale=89.62 participation_ratio=2188.179
+layer=18 alpha=1.0 delta_scale=89.62 participation_ratio=2188.179
+layer=18 alpha=1.0 delta_scale=89.62 participation_ratio=2188.179
+layer=18 alpha=1.0 delta_scale=89.62 participation_ratio=2188.179
+layer=18 alpha=2.0 delta_scale=95.44 participation_ratio=2943.163
+layer=18 alpha=2.0 delta_scale=95.44 participation_ratio=2943.163
+layer=18 alpha=2.0 delta_scale=95.44 participation_ratio=2943.163
+layer=18 alpha=2.0 delta_scale=95.44 participation_ratio=2943.163
+layer=18 alpha=2.0 delta_scale=95.44 participation_ratio=2943.163
+layer=18 alpha=4.0 delta_scale=98.36 participation_ratio=3408.822
+layer=18 alpha=4.0 delta_scale=98.36 participation_ratio=3408.822
+layer=18 alpha=4.0 delta_scale=98.36 participation_ratio=3408.822
+layer=18 alpha=4.0 delta_scale=98.36 participation_ratio=3408.822
+layer=18 alpha=4.0 delta_scale=98.36 participation_ratio=3408.822
+layer=18 alpha=8.0 delta_scale=99.53 participation_ratio=3559.072
+layer=18 alpha=8.0 delta_scale=99.53 participation_ratio=3559.072
+layer=18 alpha=8.0 delta_scale=99.53 participation_ratio=3559.072
+layer=18 alpha=8.0 delta_scale=99.53 participation_ratio=3559.072
+layer=18 alpha=8.0 delta_scale=99.53 participation_ratio=3559.072
+layer=18 alpha=16.0 delta_scale=99.91 participation_ratio=3581.859
+layer=18 alpha=16.0 delta_scale=99.91 participation_ratio=3581.859
+layer=18 alpha=16.0 delta_scale=99.91 participation_ratio=3581.859
+layer=18 alpha=16.0 delta_scale=99.91 participation_ratio=3581.859
+layer=18 alpha=16.0 delta_scale=99.91 participation_ratio=3581.859
+Tier 2 winner: layer=10, {'layer': 10, 'alpha': 1.0, 'mse_weight': 1.0, 'nll_weight': 0.0, 'baseline_mse': 34.17388473510742, 'baseline_nll': 60.48364891052246, 'final_mse': 33.45675983428955, 'final_nll': 59.64561210632324, 'participation_ratio': 1477.4644775390625, 'skipped': False, 'n': 20, 'judged_score': 2.0, 'ci_lo': 2.0, 'ci_hi': 2.0, 'optimize_score': 1.0, 'optimize_ci_lo': 1.0, 'optimize_ci_hi': 1.0, 'fully_correct_rate': 1.0, 'avg_tokens': 149.95, 'prompt_fully_correct_rate': 0.9, 'prompt_avg_tokens': 60.65, 'on_pareto_frontier': True, 'prompt_floor_fallback': False}
+
+== Final: full-size confirmation run, n=180, TEST split ==
+layer=10 alpha=1.0 delta_scale=53.90 participation_ratio=1477.464
+Final correctness (judged_score, mean 0-2): 1.9222 [1.8833, 1.9611] (95% CI, n=180)
+Final fully_correct_rate (matches the paper's Figure 1 metric): 0.9222  (Prompt alone: 0.9389)
+Final optimize_score (mean judged conciseness or -avg_tokens): 0.8722 [0.8222, 0.9222]
+Final avg_tokens: 149.9  (Prompt alone: 57.8)
+vs. Prompt alone (paired, n=180): diff=-0.0167 [-0.0611, 0.0278] -- not significantly different from Prompt alone
+
+Wrote full tiered search log to results/caveman/conceptor_matrix_tiered_search.jsonl
+== [2026-09-16 17:01:35] OK: layer/hyperparameter search: conceptor_matrix ==
+
+== [2026-09-16 17:01:35] START: layer/hyperparameter search: conceptor_selfproj ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:23,  4.05it/s]Loading weights:   1%|          | 2/339 [00:00<01:32,  3.64it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 11.90it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 36.19it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 53.47it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 65.86it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 74.72it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 80.78it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 85.10it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 87.90it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 90.39it/s]Loading weights:  33%|███▎      | 112/339 [00:01<00:02, 87.21it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 94.24it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 94.51it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 94.61it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 94.98it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.35it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 95.01it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.16it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.26it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 95.28it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 95.36it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 95.31it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 95.41it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 95.83it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.02it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.02it/s]Loading weights:  90%|████████▉ | 304/339 [00:03<00:00, 91.06it/s]Loading weights:  93%|█████████▎| 316/339 [00:03<00:00, 92.16it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 98.08it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.46it/s]
+== Tier 1: layer sweep, n=20, real judged evaluation decides survivors ==
+13 layers to evaluate (MSE-best hyperparameter combo per layer)
+Tier 1 survivors (top 3 by conciseness, among those beating/tying Prompt and not significantly less correct than the grid's best): [2, 4, 8]
+
+== Tier 2: hyperparameter sweep at surviving layer(s), n=20 ==
+75 (layer, hyperparameter) combos to evaluate at the surviving layer(s)
+Tier 2 winner: layer=2, {'layer': 2, 'percentile': 10, 'mse_weight': 1.0, 'nll_weight': 0.0, 'alpha': 24.04382167641241, 'skipped': False, 'participation_ratio': 3397.349609375, 'baseline_mse': 34.54711101531982, 'baseline_nll': 60.4899991607666, 'final_mse': 34.997212657928465, 'final_nll': 61.341184844970705, 'n': 20, 'judged_score': 1.95, 'ci_lo': 1.85, 'ci_hi': 2.0, 'optimize_score': 1.0, 'optimize_ci_lo': 1.0, 'optimize_ci_hi': 1.0, 'fully_correct_rate': 0.95, 'avg_tokens': 150.0, 'prompt_fully_correct_rate': 0.9, 'prompt_avg_tokens': 60.65, 'on_pareto_frontier': False, 'prompt_floor_fallback': False}
+
+== Final: full-size confirmation run, n=180, TEST split ==
+Final correctness (judged_score, mean 0-2): 1.9222 [1.8833, 1.9611] (95% CI, n=180)
+Final fully_correct_rate (matches the paper's Figure 1 metric): 0.9222  (Prompt alone: 0.9444)
+Final optimize_score (mean judged conciseness or -avg_tokens): 0.9444 [0.9111, 0.9778]
+Final avg_tokens: 149.9  (Prompt alone: 57.8)
+vs. Prompt alone (paired, n=180): diff=-0.0222 [-0.0667, 0.0167] -- not significantly different from Prompt alone
+
+Wrote full tiered search log to results/caveman/conceptor_selfproj_tiered_search.jsonl
+== [2026-09-16 22:16:50] OK: layer/hyperparameter search: conceptor_selfproj ==
+
+== cross-variant comparison ==
+variant               status                                          layer   correctness   conciseness       vs Prompt
+conceptor_matrix      done                                               10         1.922         0.872     ties Prompt
+conceptor_selfproj    done                                                2         1.922         0.944     ties Prompt
+conceptor             done                                                4         1.961         0.956     ties Prompt
+proper                done                                                2         1.950         0.967     ties Prompt
+
+wrote results/caveman/tiered_search_summary.json
+
+################################################################
+# DONE at Wed Sep 16 10:16:59 PM UTC 2026. Elapsed: 12h 53m
+# All variants completed.
+# Comparison: results/caveman/tiered_search_summary.json
+# Full log: results/caveman/layer_search_20260916_092333.log
+################################################################
