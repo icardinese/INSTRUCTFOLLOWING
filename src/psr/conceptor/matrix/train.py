@@ -39,12 +39,17 @@ DEFAULT_SWEEP_LAYERS = list(range(2, 27, 2))
 DEFAULT_ALPHA_GRID = [1.0, 2.0, 4.0, 8.0, 16.0]
 # See src/psr/proper/train.py's DEFAULT_LOSS_CONFIG_GRID docstring for why these are paired
 # (mse_weight, nll_weight) points rather than a full cartesian product of two independent grids.
+# 2026-09-17: cut back to just the two real endpoints per architect's directive -- the three
+# intermediate MSE+NLL blends were shown (real sweep data, psr_proper_sweep.jsonl) to change
+# final_mse by under 1% relative to pure MSE at every layer, and best_row_per_layer (Tier 1's
+# candidate builder) always selects pure MSE anyway since it deterministically has the lowest
+# final_mse -- the blends never influenced a single layer decision, only added dead sweep points.
+# H&V's own paper trains MSE and LL as two mutually-exclusive alternatives, never blended; this
+# matches that directly instead of also chasing this project's own since-abandoned additive-blend
+# extension (see steering/psr/training_loop.py's module docstring for that extension's history).
 DEFAULT_LOSS_CONFIG_GRID = [
-    {"mse_weight": 1.0, "nll_weight": 0.0},   # pure MSE
-    {"mse_weight": 1.0, "nll_weight": 0.01},  # MSE + light NLL blend
-    {"mse_weight": 1.0, "nll_weight": 0.05},  # MSE + medium NLL blend
-    {"mse_weight": 1.0, "nll_weight": 0.1},   # MSE + heavy NLL blend
-    {"mse_weight": 0.0, "nll_weight": 1.0},   # pure NLL
+    {"mse_weight": 1.0, "nll_weight": 0.0},   # pure MSE (H&V's "_MSE" variant)
+    {"mse_weight": 0.0, "nll_weight": 1.0},   # pure NLL (H&V's "_LL" variant)
 ]
 
 

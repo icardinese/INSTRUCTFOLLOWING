@@ -3,6 +3,16 @@ closed-form conceptor matrix, not gradient-trained. Reuses steering.psr.gate.for
 directly -- mechanically identical to proper/train.py's injection, differing only in where
 `direction` comes from (see steering/psr/conceptor/direction.py).
 
+IMPORTANT, restored 2026-09-17: the diff-in-means vector being projected through C comes from
+steering.psr.data.load_or_pool_prompt_last_token (the PROMPT's own last-token representation,
+base vs. instructed, no teacher-forced response involved) -- NOT from the response-token-pooled
+diff-in-means that briefly lived here during the refactor (load_or_pool_separate_poles). That was
+an unintentional deviation from the pre-refactor caveman-steer implementation (steering_const.py's
+hidden_at_last_token_all_layers), caught by comparing the two codebases directly. The conceptor
+matrix C itself is UNCHANGED -- it's still built from response-token bipolar activations (both
+poles pooled together via load_or_pool_separate_poles), matching caveman-steer's
+collect_pooled_activations_for_conceptor exactly. Only the vector fed through C changed back.
+
 No participation-ratio logging here (unlike conceptor/matrix/train.py and
 conceptor/selfproj/train.py) -- the conceptor matrix C is used ONCE, offline, to build a single
 fixed direction; the correction actually injected at inference is exactly rank-1 regardless of C's
@@ -22,7 +32,7 @@ from core.generation_cache import load_or_compute_responses
 from core.reproducibility import set_seed
 from core.sweep import run_grid_sweep
 from steering.psr.conceptor.direction import compute_conceptor, project_direction
-from steering.psr.data import load_or_pool_separate_poles
+from steering.psr.data import load_or_pool_prompt_last_token, load_or_pool_separate_poles
 from steering.psr.gate import forward_with_gate_hook, init_gate_state
 from steering.psr.training_loop import train_gate
 
@@ -39,12 +49,17 @@ DEFAULT_SWEEP_LAYERS = list(range(2, 27, 2))
 DEFAULT_ALPHA_GRID = [1.0, 2.0, 4.0, 8.0, 16.0]
 # See src/psr/proper/train.py's DEFAULT_LOSS_CONFIG_GRID docstring for why these are paired
 # (mse_weight, nll_weight) points rather than a full cartesian product of two independent grids.
+# 2026-09-17: cut back to just the two real endpoints per architect's directive -- the three
+# intermediate MSE+NLL blends were shown (real sweep data, psr_proper_sweep.jsonl) to change
+# final_mse by under 1% relative to pure MSE at every layer, and best_row_per_layer (Tier 1's
+# candidate builder) always selects pure MSE anyway since it deterministically has the lowest
+# final_mse -- the blends never influenced a single layer decision, only added dead sweep points.
+# H&V's own paper trains MSE and LL as two mutually-exclusive alternatives, never blended; this
+# matches that directly instead of also chasing this project's own since-abandoned additive-blend
+# extension (see steering/psr/training_loop.py's module docstring for that extension's history).
 DEFAULT_LOSS_CONFIG_GRID = [
-    {"mse_weight": 1.0, "nll_weight": 0.0},   # pure MSE
-    {"mse_weight": 1.0, "nll_weight": 0.01},  # MSE + light NLL blend
-    {"mse_weight": 1.0, "nll_weight": 0.05},  # MSE + medium NLL blend
-    {"mse_weight": 1.0, "nll_weight": 0.1},   # MSE + heavy NLL blend
-    {"mse_weight": 0.0, "nll_weight": 1.0},   # pure NLL
+    {"mse_weight": 1.0, "nll_weight": 0.0},   # pure MSE (H&V's "_MSE" variant)
+    {"mse_weight": 0.0, "nll_weight": 1.0},   # pure NLL (H&V's "_LL" variant)
 ]
 
 
@@ -60,15 +75,32 @@ def train_one_config(
     plus the trained/derived tensors (not JSON-safe -- see proper/train.py's train_one_config for
     the same split and why)."""
     set_seed(seed)
+    # The conceptor matrix C is built from RESPONSE-token bipolar activations (both poles pooled
+    # together) -- this matches the pre-refactor caveman-steer implementation exactly (its
+    # collect_pooled_activations_for_conceptor also pools response tokens from both poles) and is
+    # NOT something this fix touches.
     base_pool, instr_pool = load_or_pool_separate_poles(model, tokenizer, train_items, layer_idx, train_responses, cache_dir)
     # pool_separate_poles deliberately keeps pooled activations on CPU (saves GPU memory while
-    # accumulating across many training items) -- everything DERIVED from them (diff_mean_direction,
-    # conceptor, direction) must be moved to the live model's device explicitly, or the correction
-    # ends up on CPU while hidden states are on CUDA: a real, confirmed crash ("Expected all tensors
-    # to be on the same device, but found at least two devices, cuda:0 and cpu!") the .to(hidden.dtype)
-    # calls in gate.py's hook don't fix, since changing dtype doesn't change device.
+    # accumulating across many training items) -- everything DERIVED from them (conceptor) must be
+    # moved to the live model's device explicitly, or the correction ends up on CPU while hidden
+    # states are on CUDA: a real, confirmed crash ("Expected all tensors to be on the same device,
+    # but found at least two devices, cuda:0 and cpu!") the .to(hidden.dtype) calls in gate.py's
+    # hook don't fix, since changing dtype doesn't change device.
     base_pool, instr_pool = base_pool.to(device), instr_pool.to(device)
-    diff_mean_direction = instr_pool.mean(0) - base_pool.mean(0)
+
+    # The VECTOR projected through C, on the other hand, is NOT the response-token diff-in-means
+    # above -- that was a real, unintentional deviation introduced during the refactor (confirmed
+    # against caveman-steer's actual steering_const.py: the original method's base_direction comes
+    # from the PROMPT's own last-token representation, no teacher-forced response involved at all,
+    # shared with the Const method). Restored here: pool_prompt_last_token gives one row per item
+    # (the prompt's last-token hidden state), not one row per response token, so this is a
+    # genuinely different, higher-signal contrastive pair than the response-pooled one above --
+    # one consistent decision point per example ("the model has just finished reading the
+    # instruction") instead of many heterogeneous positions averaged across a whole generated
+    # response, most of which vary for reasons unrelated to terseness (word choice, content).
+    prompt_base_pool, prompt_instr_pool = load_or_pool_prompt_last_token(model, tokenizer, train_items, layer_idx, cache_dir)
+    prompt_base_pool, prompt_instr_pool = prompt_base_pool.to(device), prompt_instr_pool.to(device)
+    diff_mean_direction = prompt_instr_pool.mean(0) - prompt_base_pool.mean(0)
     diff_mean_direction = diff_mean_direction / diff_mean_direction.norm()
 
     conceptor = compute_conceptor(torch.cat([base_pool, instr_pool], dim=0), alpha=alpha)

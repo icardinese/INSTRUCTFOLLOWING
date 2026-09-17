@@ -57,6 +57,47 @@ def load_or_pool_separate_poles(model, tokenizer, items: list[dict], layer_idx: 
     return base_pool, instr_pool
 
 
+@torch.no_grad()
+def pool_prompt_last_token(model, tokenizer, items: list[dict], layer_idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """Base-prompt and instructed-prompt activations at the PROMPT's own last token -- no teacher-
+    forced response involved at all. This is the ORIGINAL (pre-refactor) contrastive signal the
+    project's Const/PSR-Conceptor methods were built on (see caveman-steer's steering_const.py
+    ``hidden_at_last_token_all_layers``): "how does the model's representation of the instruction
+    differ, right at the point where generation is about to begin" -- as opposed to
+    pool_separate_poles' response-token-pooled signal, which mixes many heterogeneous positions
+    across a whole generated response together. Kept as a SEPARATE function (not a mode flag on
+    pool_separate_poles) since the two pool fundamentally different things: one row per item here
+    (one prompt, one last-token vector), versus one row per RESPONSE TOKEN there.
+
+    `responses` is deliberately not a parameter -- unlike every other pooling function in this
+    module, this one never touches the teacher-forced response at all, by design."""
+    base_list, instr_list = [], []
+    for item in items:
+        base_ids = tokenizer(item["base_prompt"], return_tensors="pt")["input_ids"].to(model.device)
+        instr_ids = tokenizer(item["terse_prompt"], return_tensors="pt")["input_ids"].to(model.device)
+        out_base = model(input_ids=base_ids, output_hidden_states=True)
+        out_instr = model(input_ids=instr_ids, output_hidden_states=True)
+        base_list.append(out_base.hidden_states[layer_idx + 1][0, -1, :].float().cpu())
+        instr_list.append(out_instr.hidden_states[layer_idx + 1][0, -1, :].float().cpu())
+    return torch.stack(base_list, dim=0), torch.stack(instr_list, dim=0)
+
+
+def load_or_pool_prompt_last_token(model, tokenizer, items: list[dict], layer_idx: int, cache_dir) -> tuple[torch.Tensor, torch.Tensor]:
+    """Disk-cached wrapper around pool_prompt_last_token, same discipline as
+    load_or_pool_separate_poles -- this doesn't depend on alpha or loss-config either, so an alpha
+    x loss-config grid at one layer should pool once and reuse, not re-run a prompt-only forward
+    pass per grid point."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    base_path = cache_dir / f"pooled_prompt_last_token_base_layer{layer_idx}.pt"
+    instr_path = cache_dir / f"pooled_prompt_last_token_instr_layer{layer_idx}.pt"
+    if base_path.exists() and instr_path.exists():
+        return torch.load(base_path), torch.load(instr_path)
+    base_pool, instr_pool = pool_prompt_last_token(model, tokenizer, items, layer_idx)
+    torch.save(base_pool, base_path)
+    torch.save(instr_pool, instr_path)
+    return base_pool, instr_pool
+
+
 def pool_bipolar_activations(model, tokenizer, items: list[dict], layer_idx: int, responses: dict) -> torch.Tensor:
     """Both poles concatenated together -- this is the raw material compute_conceptor's correlation
     matrix gets built from. "Bipolar" (both poles pooled together) matches Triantafyllopoulos et

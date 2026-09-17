@@ -1,0 +1,407 @@
+diff --git a/evals/ablation_direction_only.py b/evals/ablation_direction_only.py
+new file mode 100644
+index 0000000..b71f768
+--- /dev/null
++++ b/evals/ablation_direction_only.py
+@@ -0,0 +1,176 @@
++"""Ablation: strip the trained gate off ANY GateState-compatible checkpoint and apply its frozen
++`direction` as plain constant additive steering instead -- h' = h + coeff * direction, same
++coefficient at every response token, via steering.const.hooks.make_const_hook (the exact mechanism
++the paper's "Constant Activation Addition" / Steer condition already uses). This directly answers
++"does the vector alone carry the method's value, or does it need the token-position-adaptive gate
++too" -- reuses the real injection mechanism rather than approximating it.
++
++Works for ANY checkpoint with {"direction", "layer"} in GateState-compatible shape -- psr_proper_probe.pt,
++psr_probe.pt (S-PSR), psr_conceptor_probe.pt, or a_psr_probe.pt at one chosen layer. This is
++deliberately the SAME script for the two ablations discussed (PSR-Proper direction-only, and
++Conceptor direction-only): the only thing that differs between them is --checkpoint.
++
++`direction` is normalized to unit norm before sweeping coefficients (PSR-Proper's is a trained
++leaf tensor with an arbitrary norm from gradient descent -- around 1.8 for the current checkpoint,
++not the 1.0 every OTHER direction in this codebase already has by construction). Without this,
++the coefficient grid below has no consistent "steering strength" meaning across checkpoints, and
++isn't comparable to the Const method's own already-calibrated coefficients either.
++
++Two stages, same discipline as evals/layer_hparam_search.py:
++  Calibration (dev, small n): sweep COEFF_GRID, pick the lowest avg_tokens among coefficients
++    whose real judged `coherent` rate stays above COHERENT_FLOOR -- a judged floor, not a
++    heuristic degenerate-text regex, consistent with this project's "real judged evidence decides,
++    not a proxy" stance elsewhere (see layer_hparam_search.py's own module docstring).
++  Final (test, full n): the chosen coefficient, evaluated on BOTH the alone (base_prompt + steer)
++    and combined (terse_prompt + steer, i.e. "Prompt+X") conditions, since the paper cares about
++    both -- calibration itself is done on ALONE only (see CALIBRATE_ON below for why), matching
++    the ablation's actual question ("does the vector alone move tokens, no textual instruction
++    helping it"), not the combined condition's own separate optimum.
++"""
++import argparse
++import json
++
++import torch
++
++from adapters.registry import get_adapter
++from core.model_common import generate_response, load_model, token_count
++from evals.bootstrap_analysis import bootstrap_ci, paired_bootstrap_diff
++from evals.registry import get_eval_adapter
++from steering.const.hooks import make_const_hook
++from steering.hooks import steering_hook
++
++COEFF_GRID = [6.0, 12.0, 20.0, 28.0, 36.0]  # same starting grid caveman-steer's Const calibration
++# used for an already-unit-normalized direction on this model -- a reasonable prior, not a
++# measured-for-this-checkpoint ceiling; widen it if the calibration picks an edge value.
++COHERENT_FLOOR = 0.85  # mean judged `coherent` rate a coefficient must clear to be considered at
++# all -- same spirit as caveman-steer's MAX_DEGENERATE_RATE=0.15 (1 - 0.15 = 0.85), but read off
++# the real judge's `coherent` field instead of a heuristic regex-based degenerate-text check.
++DEFAULT_CALIB_N = 20
++DEFAULT_FINAL_N = 180
++
++
++def load_direction_only(checkpoint_path, device: str) -> tuple[int, torch.Tensor, float]:
++    """Returns (layer_idx, unit_direction, original_norm). Deliberately ignores weight/bias/
++    coeff_bias entirely -- that IS the ablation. original_norm is returned purely for the log, so
++    it's visible exactly how much re-normalizing changed the vector, not silently done."""
++    ckpt = torch.load(checkpoint_path, map_location=device)
++    direction = ckpt["direction"].to(device)
++    original_norm = direction.norm().item()
++    unit_direction = direction / direction.norm()
++    return ckpt["layer"], unit_direction, original_norm
++
++
++def _mean(values: list[float]) -> float:
++    return sum(values) / len(values)
++
++
++def evaluate_coeff(
++    model, tokenizer, direction: torch.Tensor, layer_idx: int, coeff: float,
++    rows: list[dict], items: list[dict], adapter, eval_adapter, alone_only: bool,
++) -> dict:
++    """Generates (and judges) the alone condition always; the combined (Prompt+X) condition only
++    when alone_only is False -- calibration only ever needs the former, Final needs both."""
++    alone_responses, combined_responses = [], []
++    for item in items:
++        with steering_hook(model, layer_idx, make_const_hook(direction, coeff)):
++            alone_responses.append(generate_response(model, tokenizer, item["base_prompt"]))
++        if not alone_only:
++            with steering_hook(model, layer_idx, make_const_hook(direction, coeff)):
++                combined_responses.append(generate_response(model, tokenizer, item["terse_prompt"]))
++
++    primary_field = eval_adapter.SCORE_FIELDS[0]
++    alone_scores = [eval_adapter.score_response(row, resp) for row, resp in zip(rows, alone_responses)]
++    result = {
++        "coeff": coeff,
++        "alone_avg_tokens": _mean([token_count(tokenizer, r) for r in alone_responses]),
++        "alone_correct": _mean([s[primary_field] for s in alone_scores]),
++        "alone_coherent_rate": _mean([1.0 if s["coherent"] else 0.0 for s in alone_scores]),
++        "alone_correctness_scores": [s[primary_field] for s in alone_scores],
++    }
++    if "conciseness" in eval_adapter.SCORE_FIELDS:
++        result["alone_conciseness"] = _mean([s["conciseness"] for s in alone_scores])
++    if not alone_only:
++        combined_scores = [eval_adapter.score_response(row, resp) for row, resp in zip(rows, combined_responses)]
++        result["combined_avg_tokens"] = _mean([token_count(tokenizer, r) for r in combined_responses])
++        result["combined_correct"] = _mean([s[primary_field] for s in combined_scores])
++        result["combined_coherent_rate"] = _mean([1.0 if s["coherent"] else 0.0 for s in combined_scores])
++        result["combined_correctness_scores"] = [s[primary_field] for s in combined_scores]
++        if "conciseness" in eval_adapter.SCORE_FIELDS:
++            result["combined_conciseness"] = _mean([s["conciseness"] for s in combined_scores])
++    return result
++
++
++def run(task: str, checkpoint_name: str, coeff_grid: list[float], calib_n: int, final_n: int, seed: int = 42) -> None:
++    adapter = get_adapter(task)
++    eval_adapter = get_eval_adapter(task)
++    device = "cuda"
++    model, tokenizer = load_model(device, model_name=adapter.MODEL_NAME)
++
++    layer_idx, direction, original_norm = load_direction_only(adapter.RESULTS_DIR / checkpoint_name, device)
++    print(f"loaded {checkpoint_name}: layer={layer_idx}, ||direction||={original_norm:.4f} "
++          f"(renormalized to 1.0 for this ablation)")
++
++    dev_rows = adapter.load_rows("dev")[:calib_n]
++    dev_items = adapter.to_items(tokenizer, dev_rows)
++
++    print(f"\n== Calibration: sweeping {len(coeff_grid)} coefficients on dev (n={calib_n}), ALONE condition only ==")
++    calib_results = []
++    for coeff in coeff_grid:
++        r = evaluate_coeff(model, tokenizer, direction, layer_idx, coeff, dev_rows, dev_items, adapter, eval_adapter, alone_only=True)
++        print(f"  coeff={coeff:<6} alone_avg_tokens={r['alone_avg_tokens']:.1f}  "
++              f"alone_correct={r['alone_correct']:.3f}  alone_coherent_rate={r['alone_coherent_rate']:.2f}")
++        calib_results.append(r)
++
++    eligible = [r for r in calib_results if r["alone_coherent_rate"] >= COHERENT_FLOOR]
++    if not eligible:
++        print(f"\nWARNING: no coefficient cleared the coherent-rate floor ({COHERENT_FLOOR}) -- "
++              f"every candidate produced too much incoherent output. Widen COEFF_GRID downward "
++              f"or inspect alone_responses manually before trusting any Final run here.")
++        best_coeff = min(calib_results, key=lambda r: r["alone_avg_tokens"])["coeff"]
++        print(f"Proceeding anyway with the lowest-avg_tokens coefficient ({best_coeff}) for visibility, "
++              f"but treat its Final result as unreliable.")
++    else:
++        best_coeff = min(eligible, key=lambda r: r["alone_avg_tokens"])["coeff"]
++        print(f"\nCalibration winner: coeff={best_coeff} (lowest alone_avg_tokens among candidates "
++              f"clearing the {COHERENT_FLOOR} coherent-rate floor)")
++
++    print(f"\n== Final: coeff={best_coeff}, test split (n={final_n}), BOTH alone and combined ==")
++    test_rows = adapter.load_rows("test")[:final_n]
++    test_items = adapter.to_items(tokenizer, test_rows)
++    final = evaluate_coeff(model, tokenizer, direction, layer_idx, best_coeff, test_rows, test_items, adapter, eval_adapter, alone_only=False)
++
++    alone_pt, alone_lo, alone_hi = bootstrap_ci(final["alone_correctness_scores"])
++    combined_pt, combined_lo, combined_hi = bootstrap_ci(final["combined_correctness_scores"])
++    print(f"\nAlone:    avg_tokens={final['alone_avg_tokens']:.1f}  "
++          f"correct={alone_pt:.3f} [{alone_lo:.3f}, {alone_hi:.3f}]  coherent_rate={final['alone_coherent_rate']:.2f}")
++    print(f"Combined: avg_tokens={final['combined_avg_tokens']:.1f}  "
++          f"correct={combined_pt:.3f} [{combined_lo:.3f}, {combined_hi:.3f}]  coherent_rate={final['combined_coherent_rate']:.2f}")
++
++    out_path = adapter.RESULTS_DIR / f"ablation_direction_only_{checkpoint_name.removesuffix('.pt')}.json"
++    with out_path.open("w") as f:
++        json.dump({
++            "task": task, "checkpoint": checkpoint_name, "layer": layer_idx,
++            "original_direction_norm": original_norm, "seed": seed,
++            "calibration": calib_results, "chosen_coeff": best_coeff,
++            "final": {k: v for k, v in final.items() if not k.endswith("_scores")},
++            "final_correctness_scores": {
++                "alone": final["alone_correctness_scores"], "combined": final["combined_correctness_scores"],
++            },
++        }, f, indent=2)
++    print(f"\nwrote {out_path}")
++    print(f"\nCompare this against the SAME checkpoint's real (gated) generation results to answer "
++          f"the actual ablation question: does removing the gate hurt, help, or do nothing?")
++
++
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
++    parser.add_argument("--checkpoint", required=True,
++                         help="checkpoint filename under results/<task>/, e.g. psr_proper_probe.pt or psr_conceptor_probe.pt")
++    parser.add_argument("--coeffs", type=str, default=None, help="comma-separated coefficient grid, e.g. '6,12,20,28,36'")
++    parser.add_argument("--calib-n", type=int, default=DEFAULT_CALIB_N)
++    parser.add_argument("--final-n", type=int, default=DEFAULT_FINAL_N)
++    parser.add_argument("--seed", type=int, default=42)
++    args = parser.parse_args()
++    coeff_grid = [float(x) for x in args.coeffs.split(",")] if args.coeffs else COEFF_GRID
++    run(args.task, args.checkpoint, coeff_grid, args.calib_n, args.final_n, args.seed)
+diff --git a/src/psr/conceptor/matrix/train.py b/src/psr/conceptor/matrix/train.py
+index 8745df8..dcee296 100644
+--- a/src/psr/conceptor/matrix/train.py
++++ b/src/psr/conceptor/matrix/train.py
+@@ -39,12 +39,17 @@ DEFAULT_SWEEP_LAYERS = list(range(2, 27, 2))
+ DEFAULT_ALPHA_GRID = [1.0, 2.0, 4.0, 8.0, 16.0]
+ # See src/psr/proper/train.py's DEFAULT_LOSS_CONFIG_GRID docstring for why these are paired
+ # (mse_weight, nll_weight) points rather than a full cartesian product of two independent grids.
++# 2026-09-17: cut back to just the two real endpoints per architect's directive -- the three
++# intermediate MSE+NLL blends were shown (real sweep data, psr_proper_sweep.jsonl) to change
++# final_mse by under 1% relative to pure MSE at every layer, and best_row_per_layer (Tier 1's
++# candidate builder) always selects pure MSE anyway since it deterministically has the lowest
++# final_mse -- the blends never influenced a single layer decision, only added dead sweep points.
++# H&V's own paper trains MSE and LL as two mutually-exclusive alternatives, never blended; this
++# matches that directly instead of also chasing this project's own since-abandoned additive-blend
++# extension (see steering/psr/training_loop.py's module docstring for that extension's history).
+ DEFAULT_LOSS_CONFIG_GRID = [
+-    {"mse_weight": 1.0, "nll_weight": 0.0},   # pure MSE
+-    {"mse_weight": 1.0, "nll_weight": 0.01},  # MSE + light NLL blend
+-    {"mse_weight": 1.0, "nll_weight": 0.05},  # MSE + medium NLL blend
+-    {"mse_weight": 1.0, "nll_weight": 0.1},   # MSE + heavy NLL blend
+-    {"mse_weight": 0.0, "nll_weight": 1.0},   # pure NLL
++    {"mse_weight": 1.0, "nll_weight": 0.0},   # pure MSE (H&V's "_MSE" variant)
++    {"mse_weight": 0.0, "nll_weight": 1.0},   # pure NLL (H&V's "_LL" variant)
+ ]
+ 
+ 
+diff --git a/src/psr/conceptor/selfproj/train.py b/src/psr/conceptor/selfproj/train.py
+index 0eca025..fa1939f 100644
+--- a/src/psr/conceptor/selfproj/train.py
++++ b/src/psr/conceptor/selfproj/train.py
+@@ -42,12 +42,17 @@ PERCENTILES = [10, 30, 50, 70, 90]
+ DEFAULT_SWEEP_LAYERS = list(range(2, 27, 2))
+ # See src/psr/proper/train.py's DEFAULT_LOSS_CONFIG_GRID docstring for why these are paired
+ # (mse_weight, nll_weight) points rather than a full cartesian product of two independent grids.
++# 2026-09-17: cut back to just the two real endpoints per architect's directive -- the three
++# intermediate MSE+NLL blends were shown (real sweep data, psr_proper_sweep.jsonl) to change
++# final_mse by under 1% relative to pure MSE at every layer, and best_row_per_layer (Tier 1's
++# candidate builder) always selects pure MSE anyway since it deterministically has the lowest
++# final_mse -- the blends never influenced a single layer decision, only added dead sweep points.
++# H&V's own paper trains MSE and LL as two mutually-exclusive alternatives, never blended; this
++# matches that directly instead of also chasing this project's own since-abandoned additive-blend
++# extension (see steering/psr/training_loop.py's module docstring for that extension's history).
+ DEFAULT_LOSS_CONFIG_GRID = [
+-    {"mse_weight": 1.0, "nll_weight": 0.0},   # pure MSE
+-    {"mse_weight": 1.0, "nll_weight": 0.01},  # MSE + light NLL blend
+-    {"mse_weight": 1.0, "nll_weight": 0.05},  # MSE + medium NLL blend
+-    {"mse_weight": 1.0, "nll_weight": 0.1},   # MSE + heavy NLL blend
+-    {"mse_weight": 0.0, "nll_weight": 1.0},   # pure NLL
++    {"mse_weight": 1.0, "nll_weight": 0.0},   # pure MSE (H&V's "_MSE" variant)
++    {"mse_weight": 0.0, "nll_weight": 1.0},   # pure NLL (H&V's "_LL" variant)
+ ]
+ 
+ 
+diff --git a/src/psr/conceptor/train.py b/src/psr/conceptor/train.py
+index 060ffc1..3de2c27 100644
+--- a/src/psr/conceptor/train.py
++++ b/src/psr/conceptor/train.py
+@@ -3,6 +3,16 @@ closed-form conceptor matrix, not gradient-trained. Reuses steering.psr.gate.for
+ directly -- mechanically identical to proper/train.py's injection, differing only in where
+ `direction` comes from (see steering/psr/conceptor/direction.py).
+ 
++IMPORTANT, restored 2026-09-17: the diff-in-means vector being projected through C comes from
++steering.psr.data.load_or_pool_prompt_last_token (the PROMPT's own last-token representation,
++base vs. instructed, no teacher-forced response involved) -- NOT from the response-token-pooled
++diff-in-means that briefly lived here during the refactor (load_or_pool_separate_poles). That was
++an unintentional deviation from the pre-refactor caveman-steer implementation (steering_const.py's
++hidden_at_last_token_all_layers), caught by comparing the two codebases directly. The conceptor
++matrix C itself is UNCHANGED -- it's still built from response-token bipolar activations (both
++poles pooled together via load_or_pool_separate_poles), matching caveman-steer's
++collect_pooled_activations_for_conceptor exactly. Only the vector fed through C changed back.
++
+ No participation-ratio logging here (unlike conceptor/matrix/train.py and
+ conceptor/selfproj/train.py) -- the conceptor matrix C is used ONCE, offline, to build a single
+ fixed direction; the correction actually injected at inference is exactly rank-1 regardless of C's
+@@ -22,7 +32,7 @@ from core.generation_cache import load_or_compute_responses
+ from core.reproducibility import set_seed
+ from core.sweep import run_grid_sweep
+ from steering.psr.conceptor.direction import compute_conceptor, project_direction
+-from steering.psr.data import load_or_pool_separate_poles
++from steering.psr.data import load_or_pool_prompt_last_token, load_or_pool_separate_poles
+ from steering.psr.gate import forward_with_gate_hook, init_gate_state
+ from steering.psr.training_loop import train_gate
+ 
+@@ -39,12 +49,17 @@ DEFAULT_SWEEP_LAYERS = list(range(2, 27, 2))
+ DEFAULT_ALPHA_GRID = [1.0, 2.0, 4.0, 8.0, 16.0]
+ # See src/psr/proper/train.py's DEFAULT_LOSS_CONFIG_GRID docstring for why these are paired
+ # (mse_weight, nll_weight) points rather than a full cartesian product of two independent grids.
++# 2026-09-17: cut back to just the two real endpoints per architect's directive -- the three
++# intermediate MSE+NLL blends were shown (real sweep data, psr_proper_sweep.jsonl) to change
++# final_mse by under 1% relative to pure MSE at every layer, and best_row_per_layer (Tier 1's
++# candidate builder) always selects pure MSE anyway since it deterministically has the lowest
++# final_mse -- the blends never influenced a single layer decision, only added dead sweep points.
++# H&V's own paper trains MSE and LL as two mutually-exclusive alternatives, never blended; this
++# matches that directly instead of also chasing this project's own since-abandoned additive-blend
++# extension (see steering/psr/training_loop.py's module docstring for that extension's history).
+ DEFAULT_LOSS_CONFIG_GRID = [
+-    {"mse_weight": 1.0, "nll_weight": 0.0},   # pure MSE
+-    {"mse_weight": 1.0, "nll_weight": 0.01},  # MSE + light NLL blend
+-    {"mse_weight": 1.0, "nll_weight": 0.05},  # MSE + medium NLL blend
+-    {"mse_weight": 1.0, "nll_weight": 0.1},   # MSE + heavy NLL blend
+-    {"mse_weight": 0.0, "nll_weight": 1.0},   # pure NLL
++    {"mse_weight": 1.0, "nll_weight": 0.0},   # pure MSE (H&V's "_MSE" variant)
++    {"mse_weight": 0.0, "nll_weight": 1.0},   # pure NLL (H&V's "_LL" variant)
+ ]
+ 
+ 
+@@ -60,15 +75,32 @@ def train_one_config(
+     plus the trained/derived tensors (not JSON-safe -- see proper/train.py's train_one_config for
+     the same split and why)."""
+     set_seed(seed)
++    # The conceptor matrix C is built from RESPONSE-token bipolar activations (both poles pooled
++    # together) -- this matches the pre-refactor caveman-steer implementation exactly (its
++    # collect_pooled_activations_for_conceptor also pools response tokens from both poles) and is
++    # NOT something this fix touches.
+     base_pool, instr_pool = load_or_pool_separate_poles(model, tokenizer, train_items, layer_idx, train_responses, cache_dir)
+     # pool_separate_poles deliberately keeps pooled activations on CPU (saves GPU memory while
+-    # accumulating across many training items) -- everything DERIVED from them (diff_mean_direction,
+-    # conceptor, direction) must be moved to the live model's device explicitly, or the correction
+-    # ends up on CPU while hidden states are on CUDA: a real, confirmed crash ("Expected all tensors
+-    # to be on the same device, but found at least two devices, cuda:0 and cpu!") the .to(hidden.dtype)
+-    # calls in gate.py's hook don't fix, since changing dtype doesn't change device.
++    # accumulating across many training items) -- everything DERIVED from them (conceptor) must be
++    # moved to the live model's device explicitly, or the correction ends up on CPU while hidden
++    # states are on CUDA: a real, confirmed crash ("Expected all tensors to be on the same device,
++    # but found at least two devices, cuda:0 and cpu!") the .to(hidden.dtype) calls in gate.py's
++    # hook don't fix, since changing dtype doesn't change device.
+     base_pool, instr_pool = base_pool.to(device), instr_pool.to(device)
+-    diff_mean_direction = instr_pool.mean(0) - base_pool.mean(0)
++
++    # The VECTOR projected through C, on the other hand, is NOT the response-token diff-in-means
++    # above -- that was a real, unintentional deviation introduced during the refactor (confirmed
++    # against caveman-steer's actual steering_const.py: the original method's base_direction comes
++    # from the PROMPT's own last-token representation, no teacher-forced response involved at all,
++    # shared with the Const method). Restored here: pool_prompt_last_token gives one row per item
++    # (the prompt's last-token hidden state), not one row per response token, so this is a
++    # genuinely different, higher-signal contrastive pair than the response-pooled one above --
++    # one consistent decision point per example ("the model has just finished reading the
++    # instruction") instead of many heterogeneous positions averaged across a whole generated
++    # response, most of which vary for reasons unrelated to terseness (word choice, content).
++    prompt_base_pool, prompt_instr_pool = load_or_pool_prompt_last_token(model, tokenizer, train_items, layer_idx, cache_dir)
++    prompt_base_pool, prompt_instr_pool = prompt_base_pool.to(device), prompt_instr_pool.to(device)
++    diff_mean_direction = prompt_instr_pool.mean(0) - prompt_base_pool.mean(0)
+     diff_mean_direction = diff_mean_direction / diff_mean_direction.norm()
+ 
+     conceptor = compute_conceptor(torch.cat([base_pool, instr_pool], dim=0), alpha=alpha)
+diff --git a/src/psr/proper/train.py b/src/psr/proper/train.py
+index 92dede0..28a67ff 100644
+--- a/src/psr/proper/train.py
++++ b/src/psr/proper/train.py
+@@ -41,12 +41,17 @@ DEFAULT_SWEEP_LAYERS = list(range(2, 27, 2))
+ # project's original design), three additive MSE+NLL blends at increasing strength (this
+ # project's own proposed extension -- see training_loop.py's docstring), and pure NLL (H&V's
+ # "_LL" variant -- the one that was missing until this point).
++# 2026-09-17: cut back to just the two real endpoints per architect's directive -- the three
++# intermediate MSE+NLL blends were shown (real sweep data, psr_proper_sweep.jsonl) to change
++# final_mse by under 1% relative to pure MSE at every layer, and best_row_per_layer (Tier 1's
++# candidate builder) always selects pure MSE anyway since it deterministically has the lowest
++# final_mse -- the blends never influenced a single layer decision, only added dead sweep points.
++# H&V's own paper trains MSE and LL as two mutually-exclusive alternatives, never blended; this
++# matches that directly instead of also chasing this project's own since-abandoned additive-blend
++# extension (see steering/psr/training_loop.py's module docstring for that extension's history).
+ DEFAULT_LOSS_CONFIG_GRID = [
+-    {"mse_weight": 1.0, "nll_weight": 0.0},   # pure MSE
+-    {"mse_weight": 1.0, "nll_weight": 0.01},  # MSE + light NLL blend
+-    {"mse_weight": 1.0, "nll_weight": 0.05},  # MSE + medium NLL blend
+-    {"mse_weight": 1.0, "nll_weight": 0.1},   # MSE + heavy NLL blend
+-    {"mse_weight": 0.0, "nll_weight": 1.0},   # pure NLL
++    {"mse_weight": 1.0, "nll_weight": 0.0},   # pure MSE (H&V's "_MSE" variant)
++    {"mse_weight": 0.0, "nll_weight": 1.0},   # pure NLL (H&V's "_LL" variant)
+ ]
+ 
+ 
+diff --git a/steering/psr/data.py b/steering/psr/data.py
+index 5eaf782..0824d72 100644
+--- a/steering/psr/data.py
++++ b/steering/psr/data.py
+@@ -57,6 +57,47 @@ def load_or_pool_separate_poles(model, tokenizer, items: list[dict], layer_idx:
+     return base_pool, instr_pool
+ 
+ 
++@torch.no_grad()
++def pool_prompt_last_token(model, tokenizer, items: list[dict], layer_idx: int) -> tuple[torch.Tensor, torch.Tensor]:
++    """Base-prompt and instructed-prompt activations at the PROMPT's own last token -- no teacher-
++    forced response involved at all. This is the ORIGINAL (pre-refactor) contrastive signal the
++    project's Const/PSR-Conceptor methods were built on (see caveman-steer's steering_const.py
++    ``hidden_at_last_token_all_layers``): "how does the model's representation of the instruction
++    differ, right at the point where generation is about to begin" -- as opposed to
++    pool_separate_poles' response-token-pooled signal, which mixes many heterogeneous positions
++    across a whole generated response together. Kept as a SEPARATE function (not a mode flag on
++    pool_separate_poles) since the two pool fundamentally different things: one row per item here
++    (one prompt, one last-token vector), versus one row per RESPONSE TOKEN there.
++
++    `responses` is deliberately not a parameter -- unlike every other pooling function in this
++    module, this one never touches the teacher-forced response at all, by design."""
++    base_list, instr_list = [], []
++    for item in items:
++        base_ids = tokenizer(item["base_prompt"], return_tensors="pt")["input_ids"].to(model.device)
++        instr_ids = tokenizer(item["terse_prompt"], return_tensors="pt")["input_ids"].to(model.device)
++        out_base = model(input_ids=base_ids, output_hidden_states=True)
++        out_instr = model(input_ids=instr_ids, output_hidden_states=True)
++        base_list.append(out_base.hidden_states[layer_idx + 1][0, -1, :].float().cpu())
++        instr_list.append(out_instr.hidden_states[layer_idx + 1][0, -1, :].float().cpu())
++    return torch.stack(base_list, dim=0), torch.stack(instr_list, dim=0)
++
++
++def load_or_pool_prompt_last_token(model, tokenizer, items: list[dict], layer_idx: int, cache_dir) -> tuple[torch.Tensor, torch.Tensor]:
++    """Disk-cached wrapper around pool_prompt_last_token, same discipline as
++    load_or_pool_separate_poles -- this doesn't depend on alpha or loss-config either, so an alpha
++    x loss-config grid at one layer should pool once and reuse, not re-run a prompt-only forward
++    pass per grid point."""
++    cache_dir.mkdir(parents=True, exist_ok=True)
++    base_path = cache_dir / f"pooled_prompt_last_token_base_layer{layer_idx}.pt"
++    instr_path = cache_dir / f"pooled_prompt_last_token_instr_layer{layer_idx}.pt"
++    if base_path.exists() and instr_path.exists():
++        return torch.load(base_path), torch.load(instr_path)
++    base_pool, instr_pool = pool_prompt_last_token(model, tokenizer, items, layer_idx)
++    torch.save(base_pool, base_path)
++    torch.save(instr_pool, instr_path)
++    return base_pool, instr_pool
++
++
+ def pool_bipolar_activations(model, tokenizer, items: list[dict], layer_idx: int, responses: dict) -> torch.Tensor:
+     """Both poles concatenated together -- this is the raw material compute_conceptor's correlation
+     matrix gets built from. "Bipolar" (both poles pooled together) matches Triantafyllopoulos et
