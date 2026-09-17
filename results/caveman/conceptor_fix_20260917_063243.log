@@ -1,0 +1,192 @@
+################################################################
+# Conceptor direction fix -- re-run starting at Thu Sep 17 06:32:43 AM UTC 2026
+# Log: results/caveman/conceptor_fix_20260917_063243.log
+################################################################
+
+== pre-flight checks ==
+openai.key: found
+CUDA: available
+pre-flight checks passed -- proceeding.
+
+== backing up stale conceptor artifacts (never deleting) ==
+
+== re-running conceptor sweep with the restored prompt-representation direction ==
+
+== [2026-09-17 06:32:50] START: conceptor sweep (fixed direction, 2-point loss grid) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]Fetching 4 files:  25%|██▌       | 1/4 [00:16<00:49, 16.64s/it]Fetching 4 files:  50%|█████     | 2/4 [00:41<00:42, 21.29s/it]Fetching 4 files:  75%|███████▌  | 3/4 [00:50<00:15, 15.71s/it]Fetching 4 files: 100%|██████████| 4/4 [01:32<00:00, 26.01s/it]Fetching 4 files: 100%|██████████| 4/4 [01:32<00:00, 23.01s/it]
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   1%|          | 2/339 [00:00<00:48,  6.97it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:19, 17.37it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:07, 45.81it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:04, 62.72it/s]Loading weights:  12%|█▏        | 42/339 [00:00<00:04, 72.78it/s]Loading weights:  16%|█▌        | 54/339 [00:00<00:03, 78.76it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 83.82it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:02, 87.53it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 89.80it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 91.14it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.30it/s]Loading weights:  37%|███▋      | 125/339 [00:01<00:02, 90.77it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 94.58it/s]Loading weights:  44%|████▍     | 150/339 [00:01<00:01, 94.99it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 95.32it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.49it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 95.42it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.57it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.76it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 95.98it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 96.09it/s]Loading weights:  73%|███████▎  | 246/339 [00:02<00:00, 96.38it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.65it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.59it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.44it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.57it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 96.64it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.74it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 96.76it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 89.17it/s]
+layer=2 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=31.8416 final_nll=56.4445
+layer=2 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=34.1811 final_nll=56.0412
+layer=2 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=32.1313 final_nll=57.0691
+layer=2 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=34.3973 final_nll=56.6434
+layer=2 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=32.9149 final_nll=58.2997
+layer=2 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=34.2542 final_nll=57.9113
+layer=2 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=33.3594 final_nll=58.8007
+layer=2 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=34.0679 final_nll=58.6343
+layer=2 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=33.1431 final_nll=58.5714
+layer=2 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=33.7400 final_nll=58.4135
+layer=4 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=27.6892 final_nll=52.8964
+layer=4 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=30.1643 final_nll=51.7868
+layer=4 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=27.8177 final_nll=53.3638
+layer=4 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=29.8713 final_nll=52.6068
+layer=4 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=27.7614 final_nll=53.2399
+layer=4 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=29.5330 final_nll=52.8110
+layer=4 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=27.7578 final_nll=53.4710
+layer=4 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=29.1122 final_nll=53.0910
+layer=4 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=27.8574 final_nll=53.7152
+layer=4 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=28.9170 final_nll=53.4210
+layer=6 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=29.3997 final_nll=54.3732
+layer=6 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=31.6945 final_nll=52.0063
+layer=6 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=29.5000 final_nll=54.3816
+layer=6 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=31.5070 final_nll=52.2456
+layer=6 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=29.2024 final_nll=52.9571
+layer=6 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=30.8361 final_nll=52.1812
+layer=6 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=29.1448 final_nll=52.9111
+layer=6 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=30.6594 final_nll=52.5667
+layer=6 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=29.3344 final_nll=53.4312
+layer=6 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=30.8787 final_nll=53.0110
+layer=8 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=22.7312 final_nll=48.5933
+layer=8 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=24.2819 final_nll=47.4101
+layer=8 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=23.3918 final_nll=49.2955
+layer=8 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=24.3264 final_nll=48.4288
+layer=8 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=23.9288 final_nll=49.5882
+layer=8 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=24.6012 final_nll=48.9701
+layer=8 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=24.4828 final_nll=49.9540
+layer=8 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=25.1542 final_nll=49.4525
+layer=8 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=24.8766 final_nll=50.2155
+layer=8 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=25.5729 final_nll=49.6519
+layer=10 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=19.4561 final_nll=45.4146
+layer=10 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=19.9571 final_nll=44.7417
+layer=10 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=20.0010 final_nll=45.8362
+layer=10 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=20.7420 final_nll=45.0054
+layer=10 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=21.0111 final_nll=46.9493
+layer=10 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=22.0880 final_nll=45.9097
+layer=10 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=22.2003 final_nll=48.3121
+layer=10 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=23.5372 final_nll=47.1152
+layer=10 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=22.9617 final_nll=49.0842
+layer=10 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=24.4635 final_nll=47.9307
+layer=12 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=20.0370 final_nll=45.6939
+layer=12 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=20.6708 final_nll=45.1740
+layer=12 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=19.6909 final_nll=45.0420
+layer=12 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=20.3182 final_nll=44.5019
+layer=12 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=19.8646 final_nll=45.1239
+layer=12 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=20.5364 final_nll=44.5722
+layer=12 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=20.3184 final_nll=45.7371
+layer=12 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=21.0771 final_nll=45.0477
+layer=12 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=20.6417 final_nll=46.1545
+layer=12 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=21.4375 final_nll=45.4271
+layer=14 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=13.4513 final_nll=40.4189
+layer=14 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=13.6722 final_nll=40.1821
+layer=14 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=14.0175 final_nll=41.1069
+layer=14 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=14.2404 final_nll=40.8611
+layer=14 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=14.8839 final_nll=42.0192
+layer=14 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=15.1311 final_nll=41.8335
+layer=14 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=15.6729 final_nll=42.9576
+layer=14 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=15.9636 final_nll=42.7176
+layer=14 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=16.1173 final_nll=43.5417
+layer=14 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=16.4306 final_nll=43.2594
+layer=16 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=14.2790 final_nll=42.4868
+layer=16 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=14.8635 final_nll=42.1270
+layer=16 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=14.8249 final_nll=42.6766
+layer=16 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=15.3718 final_nll=42.4545
+layer=16 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=15.1418 final_nll=42.6252
+layer=16 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=15.6280 final_nll=42.4451
+layer=16 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=15.3646 final_nll=42.6196
+layer=16 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=15.7830 final_nll=42.4735
+layer=16 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=15.4833 final_nll=42.6400
+layer=16 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=15.8644 final_nll=42.4982
+layer=18 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=20.2440 final_nll=46.2231
+layer=18 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=21.2190 final_nll=45.1549
+layer=18 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=21.4132 final_nll=46.4733
+layer=18 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=22.3265 final_nll=45.6120
+layer=18 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=22.0706 final_nll=46.7047
+layer=18 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=22.9848 final_nll=45.7762
+layer=18 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=22.4089 final_nll=46.8313
+layer=18 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=23.3283 final_nll=45.8896
+layer=18 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=22.5482 final_nll=46.9167
+layer=18 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=23.4642 final_nll=45.9663
+layer=20 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=24.8035 final_nll=51.3454
+layer=20 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=26.4469 final_nll=49.7361
+layer=20 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=25.4683 final_nll=51.8904
+layer=20 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=27.3455 final_nll=50.1434
+layer=20 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=25.8391 final_nll=52.2668
+layer=20 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=27.8191 final_nll=50.3669
+layer=20 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=25.9899 final_nll=52.3337
+layer=20 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=28.0260 final_nll=50.4394
+layer=20 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=26.0430 final_nll=52.4025
+layer=20 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=28.0911 final_nll=50.4436
+layer=22 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=25.1565 final_nll=54.4500
+layer=22 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=27.4795 final_nll=52.2853
+layer=22 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=25.5601 final_nll=54.8606
+layer=22 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=28.3319 final_nll=52.4764
+layer=22 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=25.7651 final_nll=55.0875
+layer=22 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=28.8057 final_nll=52.5712
+layer=22 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=25.8202 final_nll=55.1469
+layer=22 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=28.9531 final_nll=52.6349
+layer=22 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=25.8298 final_nll=55.1087
+layer=22 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=28.9970 final_nll=52.5903
+layer=24 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=21.1539 final_nll=56.9116
+layer=24 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=24.7151 final_nll=54.1650
+layer=24 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=21.2932 final_nll=57.1363
+layer=24 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=25.2928 final_nll=54.1628
+layer=24 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=21.3445 final_nll=57.1406
+layer=24 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=25.5635 final_nll=54.2173
+layer=24 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=21.3615 final_nll=57.1933
+layer=24 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=25.6544 final_nll=54.2164
+layer=24 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=21.3657 final_nll=57.1875
+layer=24 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=25.6563 final_nll=54.2477
+layer=26 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=10.6064 final_nll=57.8143
+layer=26 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=10.7430 final_nll=55.4270
+layer=26 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=10.6097 final_nll=57.9232
+layer=26 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=10.7623 final_nll=55.3873
+layer=26 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=10.6111 final_nll=58.0332
+layer=26 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=10.7675 final_nll=55.4139
+layer=26 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=10.6112 final_nll=58.0295
+layer=26 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=10.7704 final_nll=55.4121
+layer=26 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=10.6116 final_nll=58.0642
+layer=26 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=10.7711 final_nll=55.4045
+
+wrote 130 sweep rows to results/caveman/psr_conceptor_sweep.jsonl
+wrote results/caveman/psr_conceptor_probe.pt (best layer=26, alpha=1.0, mse_weight=1.0, nll_weight=0.0, final_mse=10.6064)
+== [2026-09-17 09:42:16] OK: conceptor sweep (fixed direction, 2-point loss grid) ==
+
+== re-running conceptor's tiered layer/hyperparameter search ==
+
+== [2026-09-17 09:42:16] START: conceptor tiered search ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:18,  1.71it/s]Loading weights:   5%|▍         | 16/339 [00:00<00:11, 27.15it/s]Loading weights:   9%|▊         | 29/339 [00:00<00:06, 44.94it/s]Loading weights:  12%|█▏        | 41/339 [00:01<00:05, 57.52it/s]Loading weights:  15%|█▌        | 52/339 [00:01<00:04, 65.13it/s]Loading weights:  19%|█▉        | 65/339 [00:01<00:03, 75.41it/s]Loading weights:  23%|██▎       | 77/339 [00:01<00:03, 81.02it/s]Loading weights:  26%|██▌       | 88/339 [00:01<00:03, 81.25it/s]Loading weights:  30%|██▉       | 101/339 [00:01<00:02, 86.62it/s]Loading weights:  33%|███▎      | 113/339 [00:01<00:02, 89.10it/s]Loading weights:  37%|███▋      | 124/339 [00:01<00:02, 88.55it/s]Loading weights:  40%|████      | 136/339 [00:02<00:02, 90.36it/s]Loading weights:  44%|████▍     | 149/339 [00:02<00:02, 94.26it/s]Loading weights:  47%|████▋     | 160/339 [00:02<00:01, 92.25it/s]Loading weights:  51%|█████     | 173/339 [00:02<00:01, 95.42it/s]Loading weights:  54%|█████▍    | 184/339 [00:02<00:01, 93.04it/s]Loading weights:  58%|█████▊    | 197/339 [00:02<00:01, 96.27it/s]Loading weights:  62%|██████▏   | 209/339 [00:02<00:01, 95.57it/s]Loading weights:  65%|██████▍   | 220/339 [00:02<00:01, 92.92it/s]Loading weights:  68%|██████▊   | 232/339 [00:03<00:01, 93.79it/s]Loading weights:  72%|███████▏  | 244/339 [00:03<00:01, 94.43it/s]Loading weights:  76%|███████▌  | 257/339 [00:03<00:00, 97.39it/s]Loading weights:  79%|███████▉  | 269/339 [00:03<00:00, 88.82it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 92.35it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 93.69it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 94.36it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 94.82it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 94.60it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 82.65it/s]
+== Tier 1: layer sweep, n=20, real judged evaluation decides survivors ==
+13 layers to evaluate (MSE-best hyperparameter combo per layer)
+Tier 1 survivors (top 3 by conciseness, among those beating/tying Prompt and not significantly less correct than the grid's best): [16, 4, 10]
+
+== Tier 2: hyperparameter sweep at surviving layer(s), n=20 ==
+30 (layer, hyperparameter) combos to evaluate at the surviving layer(s)
+Tier 2 winner: layer=16, {'layer': 16, 'alpha': 1.0, 'mse_weight': 1.0, 'nll_weight': 0.0, 'baseline_mse': 33.276054801940916, 'baseline_nll': 60.33970878601074, 'final_mse': 14.279044952392578, 'final_nll': 42.486777267456056, 'skipped': False, 'n': 20, 'judged_score': 2.0, 'ci_lo': 2.0, 'ci_hi': 2.0, 'optimize_score': 1.05, 'optimize_ci_lo': 1.0, 'optimize_ci_hi': 1.15, 'fully_correct_rate': 1.0, 'avg_tokens': 92.15, 'prompt_fully_correct_rate': 0.9, 'prompt_avg_tokens': 60.65, 'on_pareto_frontier': True, 'prompt_floor_fallback': False}
+
+== Final: full-size confirmation run, n=180, TEST split ==
+Final correctness (judged_score, mean 0-2): 1.9611 [1.9278, 1.9833] (95% CI, n=180)
+Final fully_correct_rate (matches the paper's Figure 1 metric): 0.9611  (Prompt alone: 0.9444)
+Final optimize_score (mean judged conciseness or -avg_tokens): 1.0056 [1.0000, 1.0167]
+Final avg_tokens: 98.1  (Prompt alone: 57.8)
+vs. Prompt alone (paired, n=180): diff=0.0167 [-0.0278, 0.0556] -- not significantly different from Prompt alone
+
+Wrote full tiered search log to results/caveman/conceptor_tiered_search.jsonl
+== [2026-09-17 11:19:57] OK: conceptor tiered search ==
+
+== cross-variant comparison (includes proper/matrix/selfproj from before, unaffected) ==
+
+== [2026-09-17 11:19:57] START: cross-variant summary ==
+variant               status                                          layer   correctness   conciseness       vs Prompt
+conceptor             done                                               16         1.961         1.006     ties Prompt
+
+wrote results/caveman/tiered_search_summary.json
+== [2026-09-17 11:20:06] OK: cross-variant summary ==
+
+################################################################
+# DONE at Thu Sep 17 11:20:06 AM UTC 2026. Elapsed: 4h 47m
+# Completed with no failures.
+# Compare results/caveman/conceptor_tiered_search.jsonl's new Final avg_tokens against the
+# backed-up results/caveman/conceptor_tiered_search.jsonl.pre_direction_fix_20260917_063243
+# to see whether the direction fix actually closed the gap.
+################################################################

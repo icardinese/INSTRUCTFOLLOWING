@@ -93,7 +93,10 @@ def train_one_config(
 
 def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
     adapter = get_adapter(task)
-    out_path = adapter.RESULTS_DIR / "psr_proper_probe.pt"
+    out_tag = os.environ.get("PSR_PROPER_OUT_TAG", "")  # mirrors conceptor/train.py's PSR_CONCEPTOR_OUT_TAG --
+    # e.g. "_tiered_winner" so a checkpoint at the tiered search's real winning layer doesn't
+    # silently clobber whatever sweep()'s own global-MSE-best selection already saved here.
+    out_path = adapter.RESULTS_DIR / f"psr_proper_probe{out_tag}.pt"
     if out_path.exists() and os.environ.get("FORCE_RERUN", "0") != "1":
         print(f">>> {out_path} already exists, skipping")
         return

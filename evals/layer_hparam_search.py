@@ -142,6 +142,38 @@ def _retrain_conceptor_selfproj(row: dict, ctx: SearchContext):
     return make_inference_hook(gate, result["conceptor"].to("cuda"), result["delta_scale_tensor"].to("cuda"))
 
 
+def _build_const(row: dict, ctx: SearchContext):
+    """No training at all -- Const's direction is a closed-form diff-in-means (Stolfo's OWN
+    activation_addition_hook baseline, verified against microsoft/llm-steer-instruct). Reuses
+    steering.psr.data's prompt-last-token pooling (the exact extraction Stolfo's repo uses:
+    num_final_tokens=1, no response involved) purely for code reuse -- this has nothing to do with
+    PSR, it's just the same "last prompt token, base vs instructed" extraction either family needs."""
+    from steering.const.direction import compute_diff_mean_direction
+    from steering.const.hooks import make_const_hook
+    from steering.psr.data import load_or_pool_prompt_last_token
+
+    base_pool, instr_pool = load_or_pool_prompt_last_token(ctx.model, ctx.tokenizer, ctx.train_items, row["layer"], ctx.cache_dir)
+    direction = compute_diff_mean_direction(base_pool, instr_pool)
+    return make_const_hook(direction, row["coeff"])
+
+
+def _build_stolfo(row: dict, ctx: SearchContext):
+    """Stolfo et al. 2025's ACTUAL proposed method (direction_projection_hook), not their simpler
+    activation_addition_hook baseline (that's Const, above) -- see steering/stolfo/hooks.py's
+    module docstring for the verification against microsoft/llm-steer-instruct. No free
+    coefficient to sweep -- direction and target are both fully determined by (task, layer), so
+    unlike Const this candidate dict only ever has a "layer" key."""
+    from steering.const.direction import compute_diff_mean_direction
+    from steering.psr.data import load_or_pool_prompt_last_token
+    from steering.stolfo.direction import compute_target_projection
+    from steering.stolfo.hooks import make_stolfo_projection_hook
+
+    base_pool, instr_pool = load_or_pool_prompt_last_token(ctx.model, ctx.tokenizer, ctx.train_items, row["layer"], ctx.cache_dir)
+    direction = compute_diff_mean_direction(base_pool, instr_pool)
+    target = compute_target_projection(instr_pool, direction)
+    return make_stolfo_projection_hook(direction, target)
+
+
 # One retrain function per variant -- genuinely different math per variant (fixed-vector vs.
 # matrix vs. self-projection), so this mirrors src/generate.py's own per-variant loader functions
 # (load_gate_condition vs. load_matrix_condition vs. load_selfproj_condition) rather than forcing
@@ -151,7 +183,14 @@ RETRAIN_FNS = {
     "conceptor": _retrain_conceptor,
     "conceptor_matrix": _retrain_conceptor_matrix,
     "conceptor_selfproj": _retrain_conceptor_selfproj,
+    "const": _build_const,
+    "stolfo": _build_stolfo,
 }
+TRAINING_FREE_VARIANTS = {"const", "stolfo"}  # no gradient descent at all -- see run_training_free_search:
+# the "MSE cheaply prefilters a hyperparameter combo per layer, judged eval refines" structure
+# run_tiered_search uses doesn't apply here (there's no training loss to prefilter with), so these
+# two get a simpler, dedicated 2-tier flow (full grid at Tier 1, single winner confirmed at Final)
+# instead of being forced through machinery built around a training cost they don't have.
 
 
 def load_sweep_rows(path: Path) -> list[dict]:
@@ -201,11 +240,16 @@ def _avg_tokens(ctx: SearchContext, responses: list[str]) -> float:
 
 def mark_pareto_frontier(results: list[dict]) -> list[dict]:
     """Attaches on_pareto_frontier: bool to every non-skipped result -- True if no OTHER result
-    is both >= it on judged_score (correctness) AND >= it on optimize_score (conciseness), with
-    at least one strictly greater. Purely informational: never read by select_constrained_survivors,
+    is both >= it on judged_score (correctness) AND <= it on avg_tokens (fewer is better), with at
+    least one strict improvement. Purely informational: never read by select_constrained_survivors,
     never affects which candidate wins -- it's here so the full correctness/conciseness tradeoff
     shape for a tier survives in the log even when you'd have picked a different point off it than
-    the automated selection did. Skipped candidates get on_pareto_frontier=None (not comparable)."""
+    the automated selection did. Skipped candidates get on_pareto_frontier=None (not comparable).
+
+    2026-09-17: switched the second axis from optimize_score (judged conciseness) to avg_tokens --
+    see select_constrained_survivors' docstring for why. Keeping the frontier on the SAME two axes
+    that actually drive selection now, rather than describing a different tradeoff than the one
+    being optimized."""
     usable = [r for r in results if not r.get("skipped", False)]
     frontier_ids = set()
     for i, r in enumerate(usable):
@@ -213,8 +257,8 @@ def mark_pareto_frontier(results: list[dict]) -> list[dict]:
         for j, other in enumerate(usable):
             if i == j:
                 continue
-            if (other["judged_score"] >= r["judged_score"] and other["optimize_score"] >= r["optimize_score"]
-                    and (other["judged_score"] > r["judged_score"] or other["optimize_score"] > r["optimize_score"])):
+            if (other["judged_score"] >= r["judged_score"] and other["avg_tokens"] <= r["avg_tokens"]
+                    and (other["judged_score"] > r["judged_score"] or other["avg_tokens"] < r["avg_tokens"])):
                 dominated = True
                 break
         if not dominated:
@@ -265,9 +309,10 @@ def evaluate_candidates(
     comparison against the reference candidate later. Every non-skipped result also gets
     on_pareto_frontier (see mark_pareto_frontier) attached before returning.
 
-    candidates: each a dict with at least {"layer", "mse_weight", "nll_weight"} and whatever
-    else that variant's retrain function needs (e.g. "alpha"). Usually rows pulled straight from
-    a sweep JSONL (best_row_per_layer's output) or a hand-built hyperparameter grid for Tier 2.
+    candidates: each a dict with at least {"layer"} plus whatever that variant's build/retrain
+    function needs -- PSR variants need "mse_weight"/"nll_weight" (usually rows pulled straight
+    from a sweep JSONL); the training-free variants (const, stolfo) need only "layer" (const also
+    needs "coeff") since there's no training config to specify at all.
     """
     retrain_fn = RETRAIN_FNS[variant]
     rows = adapter.load_rows(split)[:n_examples]
@@ -356,12 +401,25 @@ def select_constrained_survivors(results: list[dict], top_k: int) -> list[dict]:
         a genuine accuracy/conciseness tradeoff (the whole premise of this project), EVERY
         candidate could legitimately lose to Prompt, and a hard floor here would mean this
         function returns nothing, forever, which is useless. So: if at least one gate-(1)
-        survivor also clears gate (2), rank THOSE by optimize_score (conciseness) as before. If
-        NONE do, fall back to ranking gate-(1) survivors by correctness alone instead (conciseness
-        is not a safe thing to optimize for once nothing has established a real accuracy floor),
-        and flag it -- callers can tell a fallback happened via each returned result's
-        `prompt_floor_fallback` key.
-    """
+        survivor also clears gate (2), rank THOSE among candidates that pass -- see below for the
+        ranking key. If NONE do, fall back to ranking gate-(1) survivors by correctness alone
+        instead (conciseness is not a safe thing to optimize for once nothing has established a
+        real accuracy floor), and flag it -- callers can tell a fallback happened via each
+        returned result's `prompt_floor_fallback` key.
+
+    RANKING KEY among gate-2 survivors, changed 2026-09-17: avg_tokens (ascending -- fewer wins)
+    is now PRIMARY, optimize_score (judged conciseness, descending) only breaks a literal tie in
+    avg_tokens, which given a continuous token count essentially never happens. This supersedes an
+    optimize_score-primary ranking that shipped originally, caught wrong by two separate real
+    instances of it silently discarding a strictly better candidate: Tier 1 preferred layer 2 over
+    layer 18 (147.9 vs 105.8 avg_tokens) purely because both tied at optimize_score=1.000 and
+    layer 2 came first in iteration order; Tier 2 preferred alpha=1.0 over alpha=2.0 at layer 16
+    (92.15 vs 85.55 avg_tokens) for the identical reason. The judged conciseness rubric is a 0/1/2
+    LLM-as-judge score at n=20 -- too coarse and too noisy to resolve real, substantial avg_tokens
+    differences, and ties are the COMMON case here, not a rare edge case a tie-break can patch
+    over. avg_tokens is continuous, deterministic, and a direct operationalization of the actual
+    thing this project is minimizing (token cost, per the handoff doc's own §1 framing) -- the
+    correctness floor is still enforced entirely upstream by gates (1)/(2), unaffected by this."""
     usable = [r for r in results if not r.get("skipped", False)]
     if not usable:
         return []
@@ -387,7 +445,7 @@ def select_constrained_survivors(results: list[dict], top_k: int) -> list[dict]:
         prompt_gate_survivors.append(r)
 
     if prompt_gate_survivors:
-        winners = sorted(prompt_gate_survivors, key=lambda r: -r["optimize_score"])[:top_k]
+        winners = sorted(prompt_gate_survivors, key=lambda r: (r["avg_tokens"], -r["optimize_score"]))[:top_k]
         return [{**r, "prompt_floor_fallback": False} for r in winners]
 
     print("WARNING: no candidate beat or tied Prompt alone -- falling back to the highest "
@@ -413,6 +471,28 @@ def load_existing_tiered_results(out_path: Path) -> dict[str, list[dict]]:
     return by_tier
 
 
+def build_search_context(adapter, seed: int) -> SearchContext:
+    """Shared setup for run_tiered_search AND run_training_free_search -- same model load, same
+    teacher-forced response caching, same SearchContext shape either way. Training-free methods
+    (const, stolfo) don't strictly need train_responses (they never call generate on a response),
+    but SearchContext is one dataclass either family's retrain/build functions read from, so it's
+    simpler to always populate it fully than to special-case what each variant actually touches."""
+    device = "cuda"
+    model, tokenizer = load_model(device, model_name=adapter.MODEL_NAME)
+    for p in model.parameters():
+        p.requires_grad_(False)
+
+    train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
+    dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
+    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
+    return SearchContext(
+        model=model, tokenizer=tokenizer, n_layers=num_layers(model), hidden_size=model.config.hidden_size,
+        cache_dir=adapter.CACHE_DIR, train_items=train_items, dev_items=dev_items,
+        train_responses=train_responses, dev_responses=dev_responses, seed=seed,
+    )
+
+
 def run_tiered_search(
     task: str,
     variant: str,
@@ -436,20 +516,8 @@ def run_tiered_search(
               f"Delete {out_path} (or just its 'final' row) to force a rerun.")
         return
 
-    device = "cuda"
-    model, tokenizer = load_model(device, model_name=adapter.MODEL_NAME)
-    for p in model.parameters():
-        p.requires_grad_(False)
-
-    train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
-    dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
-    ctx = SearchContext(
-        model=model, tokenizer=tokenizer, n_layers=num_layers(model), hidden_size=model.config.hidden_size,
-        cache_dir=adapter.CACHE_DIR, train_items=train_items, dev_items=dev_items,
-        train_responses=train_responses, dev_responses=dev_responses, seed=seed,
-    )
+    ctx = build_search_context(adapter, seed)
+    model, tokenizer = ctx.model, ctx.tokenizer
 
     all_results = [{"tier": tier, **r} for tier, rows in existing.items() for r in rows]
 
@@ -480,7 +548,7 @@ def run_tiered_search(
         print(f"Tier 1 survivors (FALLBACK -- none beat/tied Prompt alone, ranked by correctness "
               f"instead of conciseness): {[s['layer'] for s in survivors]}")
     else:
-        print(f"Tier 1 survivors (top {top_k_layers} by conciseness, among those beating/tying "
+        print(f"Tier 1 survivors (top {top_k_layers} by avg_tokens, among those beating/tying "
               f"Prompt and not significantly less correct than the grid's best): {[s['layer'] for s in survivors]}")
 
     if "tier2" in existing:
@@ -512,6 +580,95 @@ def run_tiered_search(
           f"(Prompt alone: {r['prompt_fully_correct_rate']:.4f})")
     print(f"Final optimize_score (mean judged conciseness or -avg_tokens): {r['optimize_score']:.4f} "
           f"[{r['optimize_ci_lo']:.4f}, {r['optimize_ci_hi']:.4f}]")
+    print(f"Final avg_tokens: {r['avg_tokens']:.1f}  (Prompt alone: {r['prompt_avg_tokens']:.1f})")
+
+    prompt_scores = r.get("prompt_baseline_scores")
+    if prompt_scores is not None:
+        diff, diff_lo, diff_hi = paired_bootstrap_diff(r["correctness_scores"], prompt_scores)
+        verdict = "SIGNIFICANTLY BEATS Prompt alone" if diff_lo > 0 else \
+                  "SIGNIFICANTLY WORSE than Prompt alone" if diff_hi < 0 else \
+                  "not significantly different from Prompt alone"
+        print(f"vs. Prompt alone (paired, n={final_n}): diff={diff:.4f} [{diff_lo:.4f}, {diff_hi:.4f}] -- {verdict}")
+
+    print(f"\nWrote full tiered search log to {out_path}")
+
+
+DEFAULT_TRAINING_FREE_LAYERS = list(range(2, 27, 2))  # SAME dense 13-layer grid every PSR variant's
+# sweep uses -- the whole point of this addition is giving Const/Stolfo the same search rigor,
+# not a coarser one (the old caveman-steer repo's Const only ever checked ~4 fractional layers).
+DEFAULT_CONST_COEFF_GRID = [2, 4, 6, 8, 10, 12, 16, 20, 24, 28]  # src/const/sweep.py's existing grid
+
+
+def run_training_free_search(
+    task: str,
+    variant: str,
+    tier1_n: int = DEFAULT_TIER1_N,
+    final_n: int = DEFAULT_FINAL_N,
+    layers: list[int] | None = None,
+    coeff_grid: list[float] | None = None,
+    seed: int = 42,
+    max_batch_rows: int = DEFAULT_MAX_BATCH_ROWS,
+) -> None:
+    """Const/Stolfo's own tiered search -- same judged-evidence discipline and the same
+    select_constrained_survivors gates as run_tiered_search, but a genuinely simpler 2-tier shape:
+    NO training happens anywhere in either method, so there's no cheap loss to prefilter a
+    hyperparameter combo per layer with (run_tiered_search's Tier 1 role) before paying for judged
+    eval -- the full (layer x coeff) grid for Const, or just (layer) for Stolfo (no free
+    coefficient exists in that method), is cheap enough to judge directly. Tier 1 here IS the full
+    grid; its single top_k=1 winner goes straight to Final. Writes the same {variant}_tiered_
+    search.jsonl shape (tier1 + final rows, no tier2) that summarize_all_variants already reads."""
+    if variant not in TRAINING_FREE_VARIANTS:
+        raise ValueError(f"{variant} is not training-free -- use run_tiered_search instead")
+
+    adapter = get_adapter(task)
+    eval_adapter = get_eval_adapter(task)
+    out_path = adapter.RESULTS_DIR / f"{variant}_tiered_search.jsonl"
+    existing = load_existing_tiered_results(out_path)
+    if "final" in existing:
+        print(f"{out_path} already has a Final result for '{variant}' -- fully done, skipping. "
+              f"Delete {out_path} (or just its 'final' row) to force a rerun.")
+        return
+
+    ctx = build_search_context(adapter, seed)
+    layers = layers if layers is not None else DEFAULT_TRAINING_FREE_LAYERS
+
+    all_results = [{"tier": tier, **r} for tier, rows in existing.items() for r in rows]
+
+    def write(tier: str, rows: list[dict]) -> None:
+        for r in rows:
+            all_results.append({"tier": tier, **r})
+        with out_path.open("w") as f:
+            for r in all_results:
+                f.write(json.dumps(r) + "\n")
+
+    if "tier1" in existing:
+        print(f"Tier 1 already complete ({len(existing['tier1'])} rows) -- reusing from {out_path}")
+        tier1_results = existing["tier1"]
+    else:
+        if variant == "const":
+            coeff_grid = coeff_grid if coeff_grid is not None else DEFAULT_CONST_COEFF_GRID
+            tier1_candidates = [{"layer": l, "coeff": c} for l in layers for c in coeff_grid]
+        else:  # stolfo -- no coefficient, one candidate per layer
+            tier1_candidates = [{"layer": l} for l in layers]
+        print(f"== Tier 1 (= full grid, no training to prefilter with): {len(tier1_candidates)} "
+              f"candidates, n={tier1_n}, real judged evaluation ==")
+        tier1_results = evaluate_candidates(variant, tier1_candidates, ctx, adapter, eval_adapter, tier1_n, split="dev", max_batch_rows=max_batch_rows)
+        write("tier1", tier1_results)
+
+    winner_list = select_constrained_survivors(tier1_results, top_k=1)
+    winner = winner_list[0] if winner_list else None
+    if winner is None:
+        print("WARNING: every Tier 1 candidate was skipped -- no final confirmation run")
+        return
+    fallback_note = " -- FALLBACK, does not beat/tie Prompt alone" if winner["prompt_floor_fallback"] else ""
+    print(f"Winner{fallback_note}: layer={winner['layer']} coeff={winner.get('coeff', 'n/a')} "
+          f"avg_tokens={winner['avg_tokens']:.1f}")
+
+    print(f"\n== Final: full-size confirmation run, n={final_n}, TEST split ==")
+    final_results = evaluate_candidates(variant, [winner], ctx, adapter, eval_adapter, final_n, split="test", max_batch_rows=max_batch_rows)
+    write("final", final_results)
+    r = final_results[0]
+    print(f"Final correctness (judged_score, mean 0-2): {r['judged_score']:.4f} [{r['ci_lo']:.4f}, {r['ci_hi']:.4f}] (95% CI, n={final_n})")
     print(f"Final avg_tokens: {r['avg_tokens']:.1f}  (Prompt alone: {r['prompt_avg_tokens']:.1f})")
 
     prompt_scores = r.get("prompt_baseline_scores")
@@ -587,4 +744,7 @@ if __name__ == "__main__":
     else:
         if not args.variant:
             parser.error("--variant is required unless --summarize is given")
-        run_tiered_search(args.task, args.variant, args.tier1_n, args.tier2_n, args.final_n, args.top_k_layers, args.seed, args.max_batch_rows)
+        if args.variant in TRAINING_FREE_VARIANTS:
+            run_training_free_search(args.task, args.variant, args.tier1_n, args.final_n, seed=args.seed, max_batch_rows=args.max_batch_rows)
+        else:
+            run_tiered_search(args.task, args.variant, args.tier1_n, args.tier2_n, args.final_n, args.top_k_layers, args.seed, args.max_batch_rows)

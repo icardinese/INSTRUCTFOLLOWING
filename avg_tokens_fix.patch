@@ -1,0 +1,366 @@
+diff --git a/evals/layer_hparam_search.py b/evals/layer_hparam_search.py
+index 8d41261..0284f7c 100644
+--- a/evals/layer_hparam_search.py
++++ b/evals/layer_hparam_search.py
+@@ -201,11 +201,16 @@ def _avg_tokens(ctx: SearchContext, responses: list[str]) -> float:
+ 
+ def mark_pareto_frontier(results: list[dict]) -> list[dict]:
+     """Attaches on_pareto_frontier: bool to every non-skipped result -- True if no OTHER result
+-    is both >= it on judged_score (correctness) AND >= it on optimize_score (conciseness), with
+-    at least one strictly greater. Purely informational: never read by select_constrained_survivors,
++    is both >= it on judged_score (correctness) AND <= it on avg_tokens (fewer is better), with at
++    least one strict improvement. Purely informational: never read by select_constrained_survivors,
+     never affects which candidate wins -- it's here so the full correctness/conciseness tradeoff
+     shape for a tier survives in the log even when you'd have picked a different point off it than
+-    the automated selection did. Skipped candidates get on_pareto_frontier=None (not comparable)."""
++    the automated selection did. Skipped candidates get on_pareto_frontier=None (not comparable).
++
++    2026-09-17: switched the second axis from optimize_score (judged conciseness) to avg_tokens --
++    see select_constrained_survivors' docstring for why. Keeping the frontier on the SAME two axes
++    that actually drive selection now, rather than describing a different tradeoff than the one
++    being optimized."""
+     usable = [r for r in results if not r.get("skipped", False)]
+     frontier_ids = set()
+     for i, r in enumerate(usable):
+@@ -213,8 +218,8 @@ def mark_pareto_frontier(results: list[dict]) -> list[dict]:
+         for j, other in enumerate(usable):
+             if i == j:
+                 continue
+-            if (other["judged_score"] >= r["judged_score"] and other["optimize_score"] >= r["optimize_score"]
+-                    and (other["judged_score"] > r["judged_score"] or other["optimize_score"] > r["optimize_score"])):
++            if (other["judged_score"] >= r["judged_score"] and other["avg_tokens"] <= r["avg_tokens"]
++                    and (other["judged_score"] > r["judged_score"] or other["avg_tokens"] < r["avg_tokens"])):
+                 dominated = True
+                 break
+         if not dominated:
+@@ -356,12 +361,25 @@ def select_constrained_survivors(results: list[dict], top_k: int) -> list[dict]:
+         a genuine accuracy/conciseness tradeoff (the whole premise of this project), EVERY
+         candidate could legitimately lose to Prompt, and a hard floor here would mean this
+         function returns nothing, forever, which is useless. So: if at least one gate-(1)
+-        survivor also clears gate (2), rank THOSE by optimize_score (conciseness) as before. If
+-        NONE do, fall back to ranking gate-(1) survivors by correctness alone instead (conciseness
+-        is not a safe thing to optimize for once nothing has established a real accuracy floor),
+-        and flag it -- callers can tell a fallback happened via each returned result's
+-        `prompt_floor_fallback` key.
+-    """
++        survivor also clears gate (2), rank THOSE among candidates that pass -- see below for the
++        ranking key. If NONE do, fall back to ranking gate-(1) survivors by correctness alone
++        instead (conciseness is not a safe thing to optimize for once nothing has established a
++        real accuracy floor), and flag it -- callers can tell a fallback happened via each
++        returned result's `prompt_floor_fallback` key.
++
++    RANKING KEY among gate-2 survivors, changed 2026-09-17: avg_tokens (ascending -- fewer wins)
++    is now PRIMARY, optimize_score (judged conciseness, descending) only breaks a literal tie in
++    avg_tokens, which given a continuous token count essentially never happens. This supersedes an
++    optimize_score-primary ranking that shipped originally, caught wrong by two separate real
++    instances of it silently discarding a strictly better candidate: Tier 1 preferred layer 2 over
++    layer 18 (147.9 vs 105.8 avg_tokens) purely because both tied at optimize_score=1.000 and
++    layer 2 came first in iteration order; Tier 2 preferred alpha=1.0 over alpha=2.0 at layer 16
++    (92.15 vs 85.55 avg_tokens) for the identical reason. The judged conciseness rubric is a 0/1/2
++    LLM-as-judge score at n=20 -- too coarse and too noisy to resolve real, substantial avg_tokens
++    differences, and ties are the COMMON case here, not a rare edge case a tie-break can patch
++    over. avg_tokens is continuous, deterministic, and a direct operationalization of the actual
++    thing this project is minimizing (token cost, per the handoff doc's own §1 framing) -- the
++    correctness floor is still enforced entirely upstream by gates (1)/(2), unaffected by this."""
+     usable = [r for r in results if not r.get("skipped", False)]
+     if not usable:
+         return []
+@@ -387,7 +405,7 @@ def select_constrained_survivors(results: list[dict], top_k: int) -> list[dict]:
+         prompt_gate_survivors.append(r)
+ 
+     if prompt_gate_survivors:
+-        winners = sorted(prompt_gate_survivors, key=lambda r: -r["optimize_score"])[:top_k]
++        winners = sorted(prompt_gate_survivors, key=lambda r: (r["avg_tokens"], -r["optimize_score"]))[:top_k]
+         return [{**r, "prompt_floor_fallback": False} for r in winners]
+ 
+     print("WARNING: no candidate beat or tied Prompt alone -- falling back to the highest "
+@@ -480,7 +498,7 @@ def run_tiered_search(
+         print(f"Tier 1 survivors (FALLBACK -- none beat/tied Prompt alone, ranked by correctness "
+               f"instead of conciseness): {[s['layer'] for s in survivors]}")
+     else:
+-        print(f"Tier 1 survivors (top {top_k_layers} by conciseness, among those beating/tying "
++        print(f"Tier 1 survivors (top {top_k_layers} by avg_tokens, among those beating/tying "
+               f"Prompt and not significantly less correct than the grid's best): {[s['layer'] for s in survivors]}")
+ 
+     if "tier2" in existing:
+diff --git a/infra/run_fixed_selection_overnight.sh b/infra/run_fixed_selection_overnight.sh
+new file mode 100755
+index 0000000..a3c8da9
+--- /dev/null
++++ b/infra/run_fixed_selection_overnight.sh
+@@ -0,0 +1,91 @@
++#!/usr/bin/env bash
++# Runs scripts/rerun_with_fixed_selection.py: re-selects conceptor's/proper's tiered-search
++# winners under the corrected avg_tokens-primary ranking (paying real cost only where the fix
++# actually requires new evaluation -- conceptor needs Final only, proper needs Tier 2 + Final),
++# regenerates a real checkpoint at each corrected winner, then runs the direction-only ablation
++# (evals/ablation_direction_only.py) on both.
++#
++# REQUIRES results/caveman/conceptor_tiered_search.jsonl and proper_tiered_search.jsonl to already
++# exist with real tier1 data in them (they do, from the earlier overnight runs).
++#
++# RUN THIS IN A WAY THAT SURVIVES YOU DISCONNECTING:
++#   tmux new -s fixed_selection   # then inside: bash infra/run_fixed_selection_overnight.sh
++#   nohup bash infra/run_fixed_selection_overnight.sh > /dev/null 2>&1 &
++set -uo pipefail
++
++REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
++export PYTHONPATH="$REPO_ROOT:$REPO_ROOT/src:${PYTHONPATH:-}"
++cd "$REPO_ROOT"
++
++TASK="caveman"
++RESULTS_DIR="results/$TASK"
++TIMESTAMP="$(date '+%Y%m%d_%H%M%S')"
++LOG_FILE="$RESULTS_DIR/fixed_selection_${TIMESTAMP}.log"
++mkdir -p "$RESULTS_DIR"
++exec > >(tee -a "$LOG_FILE") 2>&1
++
++TIER1_N="${TIER1_N:-20}"
++TIER2_N="${TIER2_N:-20}"
++FINAL_N="${FINAL_N:-180}"
++TOP_K_LAYERS="${TOP_K_LAYERS:-3}"
++SKIP_ABLATION="${SKIP_ABLATION:-0}"
++
++echo "################################################################"
++echo "# avg_tokens-primary re-selection -- starting at $(date)"
++echo "# Log: $LOG_FILE"
++echo "################################################################"
++
++echo ""
++echo "== pre-flight checks =="
++PREFLIGHT_OK=1
++
++if [ ! -f "openai.key" ]; then
++    echo "PRE-FLIGHT FAILURE: openai.key not found."
++    PREFLIGHT_OK=0
++else
++    echo "openai.key: found"
++fi
++
++if ! python3 -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
++    echo "PRE-FLIGHT FAILURE: torch.cuda.is_available() is False."
++    PREFLIGHT_OK=0
++else
++    echo "CUDA: available"
++fi
++
++for f in "$RESULTS_DIR/conceptor_tiered_search.jsonl" "$RESULTS_DIR/proper_tiered_search.jsonl"; do
++    if [ ! -f "$f" ]; then
++        echo "PRE-FLIGHT FAILURE: $f not found -- this script re-selects from an existing tiered search, it doesn't start one from scratch."
++        PREFLIGHT_OK=0
++    fi
++done
++
++if [ "$PREFLIGHT_OK" != "1" ]; then
++    echo ""
++    echo "Aborting BEFORE touching the GPU/API -- fix the above and rerun."
++    exit 1
++fi
++echo "pre-flight checks passed -- proceeding."
++
++ABLATION_FLAG=""
++if [ "$SKIP_ABLATION" = "1" ]; then
++    ABLATION_FLAG="--skip-ablation"
++fi
++
++python3 -u scripts/rerun_with_fixed_selection.py \
++    --timestamp "$TIMESTAMP" --tier1-n "$TIER1_N" --tier2-n "$TIER2_N" \
++    --final-n "$FINAL_N" --top-k-layers "$TOP_K_LAYERS" $ABLATION_FLAG
++STATUS=$?
++
++echo ""
++echo "################################################################"
++if [ "$STATUS" -eq 0 ]; then
++    echo "# DONE at $(date). Completed with no failures."
++else
++    echo "# FAILED at $(date) (exit $STATUS) -- rerun this exact script, already-truncated files"
++    echo "# and already-regenerated checkpoints are left in place, so a rerun should pick up close"
++    echo "# to where it stopped, not redo everything from scratch."
++fi
++echo "# Compare *_tiered_search.jsonl against *.pre_avg_tokens_fix_${TIMESTAMP} to see what changed."
++echo "# Full log: $LOG_FILE"
++echo "################################################################"
+diff --git a/scripts/rerun_with_fixed_selection.py b/scripts/rerun_with_fixed_selection.py
+new file mode 100644
+index 0000000..09ff4fe
+--- /dev/null
++++ b/scripts/rerun_with_fixed_selection.py
+@@ -0,0 +1,162 @@
++"""One driver for everything discussed: (1) re-select conceptor's/proper's tiered-search winners
++under the fixed avg_tokens-primary ranking, paying real GPU/API cost ONLY where the fix actually
++requires new evaluation, not by resweeping anything; (2) regenerate a real checkpoint file at each
++variant's ACTUAL winning (layer, alpha, loss-config) -- `run_tiered_search`'s retrain functions
++train in-memory for evaluation and never persist a .pt, so the checkpoint sweep()'s own MSE-based
++selection saved is very likely NOT the tiered search's real winner; (3) run the direction-only
++ablation (evals/ablation_direction_only.py) on both resulting checkpoints.
++
++Why conceptor only needs its Final re-run, but proper needs Tier 2 AND Final re-run:
++  conceptor's Tier 1 survivors [16, 4, 10] were a real tie at n=20 (not the ascending-layer-index
++  bug) -- avg_tokens-primary ranking, re-applied to the SAME already-evaluated Tier 1 candidates,
++  is very likely to pick the same survivor set (or a substantively similar one), so Tier 2 is
++  reused as-is. But Tier 2's WINNER among those survivors (layer 16's 5 alpha/loss points) DOES
++  change under the fix -- alpha=2.0 (85.55 avg_tokens) beats alpha=1.0 (92.15) once avg_tokens
++  actually drives the ranking, so only Final needs to re-run.
++  proper's Tier 1 survivors [2, 8, 10] were the OTHER failure mode -- a real ascending-layer-index
++  artifact discarding layer 18 (105.8 avg_tokens) in favor of ties at 147-150. Re-ranking the same
++  Tier 1 data under the fix should surface a materially different survivor set (something in the
++  12-18 range), which the existing Tier 2 data (evaluated only at layers 2/8/10) doesn't cover at
++  all -- so Tier 2 must be freshly evaluated at whatever the corrected survivors turn out to be,
++  and Final after that.
++Both are determined by the actual re-selection at runtime, not hardcoded here -- this script reads
++whatever `select_constrained_survivors` (now avg_tokens-primary) actually decides, for either
++variant, rather than assuming the reasoning above holds exactly.
++
++Nothing is deleted -- every JSONL this script truncates gets backed up with a timestamp suffix
++first. Reruns are done via run_tiered_search directly (same resumability/skip-logic as running the
++CLI), so a crash partway through this script is safe to just rerun from the top.
++"""
++import argparse
++import json
++import os
++import subprocess
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, for `evals.*`/`src.*` imports
++
++from adapters.registry import get_adapter
++from evals.layer_hparam_search import (
++    DEFAULT_FINAL_N, DEFAULT_TIER1_N, DEFAULT_TIER2_N, DEFAULT_TOP_K_LAYERS,
++    load_existing_tiered_results, run_tiered_search, summarize_all_variants,
++)
++
++TASK = "caveman"
++
++
++def backup_and_truncate(out_path: Path, tiers_to_keep: set[str], timestamp: str) -> None:
++    """Copies out_path aside (untouched, full original content), then rewrites out_path with only
++    the rows whose "tier" is in tiers_to_keep -- run_tiered_search's own resumability logic reads
++    this back and treats missing tiers as "not done yet", so this is what forces exactly the
++    tiers that need fresh evaluation to actually get it."""
++    if not out_path.exists():
++        print(f"  {out_path} doesn't exist -- nothing to truncate, run_tiered_search will do a full fresh run")
++        return
++    backup_path = out_path.with_suffix(out_path.suffix + f".pre_avg_tokens_fix_{timestamp}")
++    backup_path.write_text(out_path.read_text())
++    print(f"  backed up: {out_path} -> {backup_path}")
++    kept = []
++    with out_path.open() as f:
++        for line in f:
++            row = json.loads(line)
++            if row["tier"] in tiers_to_keep:
++                kept.append(line)
++    with out_path.open("w") as f:
++        f.writelines(kept)
++    print(f"  rewrote {out_path}: kept tiers {sorted(tiers_to_keep)} ({len(kept)} rows)")
++
++
++def rerun_variant(adapter, variant: str, tiers_to_keep: set[str], timestamp: str,
++                   tier1_n: int, tier2_n: int, final_n: int, top_k_layers: int) -> dict:
++    out_path = adapter.RESULTS_DIR / f"{variant}_tiered_search.jsonl"
++    print(f"\n== {variant}: truncating to force re-selection under the fixed ranking ==")
++    backup_and_truncate(out_path, tiers_to_keep, timestamp)
++
++    print(f"\n== {variant}: running (reuses whatever's left on disk, evaluates only what's missing) ==")
++    run_tiered_search(TASK, variant, tier1_n, tier2_n, final_n, top_k_layers)
++
++    existing = load_existing_tiered_results(out_path)
++    if "final" not in existing:
++        raise RuntimeError(f"{variant}: no Final result after rerun -- check the run's own output above")
++    winner = existing["final"][0]
++    print(f"{variant} corrected winner: layer={winner['layer']} "
++          f"alpha={winner.get('alpha', 'n/a')} mse_weight={winner['mse_weight']} nll_weight={winner['nll_weight']} "
++          f"avg_tokens={winner['avg_tokens']:.1f}")
++    return winner
++
++
++def regenerate_checkpoint(adapter, variant: str, winner: dict, out_tag: str, seed: int) -> Path:
++    """Runs that variant's train.py main() at the exact (layer, alpha, loss-config) the corrected
++    tiered search actually picked, saved under out_tag so it never collides with whatever
++    sweep()'s own MSE-based selection already saved under the plain filename."""
++    env = os.environ.copy()
++    env["FORCE_RERUN"] = "1"
++    if variant == "proper":
++        script = "src/psr/proper/train.py"
++        env["PSR_PROPER_OUT_TAG"] = out_tag
++        env["PSR_PROPER_MSE_WEIGHT"] = str(winner["mse_weight"])
++        env["PSR_PROPER_NLL_WEIGHT"] = str(winner["nll_weight"])
++        expected_path = adapter.RESULTS_DIR / f"psr_proper_probe{out_tag}.pt"
++    elif variant == "conceptor":
++        script = "src/psr/conceptor/train.py"
++        env["PSR_CONCEPTOR_OUT_TAG"] = out_tag
++        env["PSR_CONCEPTOR_ALPHA"] = str(winner["alpha"])
++        env["PSR_CONCEPTOR_MSE_WEIGHT"] = str(winner["mse_weight"])
++        env["PSR_CONCEPTOR_NLL_WEIGHT"] = str(winner["nll_weight"])
++        expected_path = adapter.RESULTS_DIR / f"psr_conceptor_probe{out_tag}.pt"
++    else:
++        raise ValueError(variant)
++
++    print(f"\n== {variant}: regenerating a real checkpoint at the corrected winner -> {expected_path} ==")
++    subprocess.run(
++        [sys.executable, script, "--task", TASK, "--layer", str(winner["layer"]), "--seed", str(seed)],
++        check=True, env=env,
++    )
++    if not expected_path.exists():
++        raise RuntimeError(f"expected {expected_path} after training but it's not there")
++    return expected_path
++
++
++def run_ablation(checkpoint_path: Path) -> None:
++    print(f"\n== direction-only ablation on {checkpoint_path.name} ==")
++    subprocess.run(
++        [sys.executable, "evals/ablation_direction_only.py", "--task", TASK, "--checkpoint", checkpoint_path.name],
++        check=True,
++    )
++
++
++def main(timestamp: str, tier1_n: int, tier2_n: int, final_n: int, top_k_layers: int, seed: int, skip_ablation: bool) -> None:
++    adapter = get_adapter(TASK)
++
++    conceptor_winner = rerun_variant(adapter, "conceptor", tiers_to_keep={"tier1", "tier2"},
++                                      timestamp=timestamp, tier1_n=tier1_n, tier2_n=tier2_n,
++                                      final_n=final_n, top_k_layers=top_k_layers)
++    proper_winner = rerun_variant(adapter, "proper", tiers_to_keep={"tier1"},
++                                   timestamp=timestamp, tier1_n=tier1_n, tier2_n=tier2_n,
++                                   final_n=final_n, top_k_layers=top_k_layers)
++
++    print("\n== cross-variant summary (includes matrix/selfproj from before, untouched by this fix) ==")
++    summarize_all_variants(TASK)
++
++    conceptor_ckpt = regenerate_checkpoint(adapter, "conceptor", conceptor_winner, "_tiered_winner", seed)
++    proper_ckpt = regenerate_checkpoint(adapter, "proper", proper_winner, "_tiered_winner", seed)
++
++    if not skip_ablation:
++        run_ablation(proper_ckpt)
++        run_ablation(conceptor_ckpt)
++    else:
++        print("\n--skip-ablation given -- checkpoints regenerated, ablation runs skipped.")
++
++
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--timestamp", required=True, help="passed in from the shell wrapper so backup filenames match the run's log filename")
++    parser.add_argument("--tier1-n", type=int, default=DEFAULT_TIER1_N)
++    parser.add_argument("--tier2-n", type=int, default=DEFAULT_TIER2_N)
++    parser.add_argument("--final-n", type=int, default=DEFAULT_FINAL_N)
++    parser.add_argument("--top-k-layers", type=int, default=DEFAULT_TOP_K_LAYERS)
++    parser.add_argument("--seed", type=int, default=42)
++    parser.add_argument("--skip-ablation", action="store_true")
++    args = parser.parse_args()
++    main(args.timestamp, args.tier1_n, args.tier2_n, args.final_n, args.top_k_layers, args.seed, args.skip_ablation)
+diff --git a/src/psr/proper/train.py b/src/psr/proper/train.py
+index 28a67ff..3943ca6 100644
+--- a/src/psr/proper/train.py
++++ b/src/psr/proper/train.py
+@@ -93,7 +93,10 @@ def train_one_config(
+ 
+ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
+     adapter = get_adapter(task)
+-    out_path = adapter.RESULTS_DIR / "psr_proper_probe.pt"
++    out_tag = os.environ.get("PSR_PROPER_OUT_TAG", "")  # mirrors conceptor/train.py's PSR_CONCEPTOR_OUT_TAG --
++    # e.g. "_tiered_winner" so a checkpoint at the tiered search's real winning layer doesn't
++    # silently clobber whatever sweep()'s own global-MSE-best selection already saved here.
++    out_path = adapter.RESULTS_DIR / f"psr_proper_probe{out_tag}.pt"
+     if out_path.exists() and os.environ.get("FORCE_RERUN", "0") != "1":
+         print(f">>> {out_path} already exists, skipping")
+         return

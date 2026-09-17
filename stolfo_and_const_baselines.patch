@@ -1,0 +1,543 @@
+diff --git a/evals/layer_hparam_search.py b/evals/layer_hparam_search.py
+index 0284f7c..b98dc9d 100644
+--- a/evals/layer_hparam_search.py
++++ b/evals/layer_hparam_search.py
+@@ -142,6 +142,38 @@ def _retrain_conceptor_selfproj(row: dict, ctx: SearchContext):
+     return make_inference_hook(gate, result["conceptor"].to("cuda"), result["delta_scale_tensor"].to("cuda"))
+ 
+ 
++def _build_const(row: dict, ctx: SearchContext):
++    """No training at all -- Const's direction is a closed-form diff-in-means (Stolfo's OWN
++    activation_addition_hook baseline, verified against microsoft/llm-steer-instruct). Reuses
++    steering.psr.data's prompt-last-token pooling (the exact extraction Stolfo's repo uses:
++    num_final_tokens=1, no response involved) purely for code reuse -- this has nothing to do with
++    PSR, it's just the same "last prompt token, base vs instructed" extraction either family needs."""
++    from steering.const.direction import compute_diff_mean_direction
++    from steering.const.hooks import make_const_hook
++    from steering.psr.data import load_or_pool_prompt_last_token
++
++    base_pool, instr_pool = load_or_pool_prompt_last_token(ctx.model, ctx.tokenizer, ctx.train_items, row["layer"], ctx.cache_dir)
++    direction = compute_diff_mean_direction(base_pool, instr_pool)
++    return make_const_hook(direction, row["coeff"])
++
++
++def _build_stolfo(row: dict, ctx: SearchContext):
++    """Stolfo et al. 2025's ACTUAL proposed method (direction_projection_hook), not their simpler
++    activation_addition_hook baseline (that's Const, above) -- see steering/stolfo/hooks.py's
++    module docstring for the verification against microsoft/llm-steer-instruct. No free
++    coefficient to sweep -- direction and target are both fully determined by (task, layer), so
++    unlike Const this candidate dict only ever has a "layer" key."""
++    from steering.const.direction import compute_diff_mean_direction
++    from steering.psr.data import load_or_pool_prompt_last_token
++    from steering.stolfo.direction import compute_target_projection
++    from steering.stolfo.hooks import make_stolfo_projection_hook
++
++    base_pool, instr_pool = load_or_pool_prompt_last_token(ctx.model, ctx.tokenizer, ctx.train_items, row["layer"], ctx.cache_dir)
++    direction = compute_diff_mean_direction(base_pool, instr_pool)
++    target = compute_target_projection(instr_pool, direction)
++    return make_stolfo_projection_hook(direction, target)
++
++
+ # One retrain function per variant -- genuinely different math per variant (fixed-vector vs.
+ # matrix vs. self-projection), so this mirrors src/generate.py's own per-variant loader functions
+ # (load_gate_condition vs. load_matrix_condition vs. load_selfproj_condition) rather than forcing
+@@ -151,7 +183,14 @@ RETRAIN_FNS = {
+     "conceptor": _retrain_conceptor,
+     "conceptor_matrix": _retrain_conceptor_matrix,
+     "conceptor_selfproj": _retrain_conceptor_selfproj,
++    "const": _build_const,
++    "stolfo": _build_stolfo,
+ }
++TRAINING_FREE_VARIANTS = {"const", "stolfo"}  # no gradient descent at all -- see run_training_free_search:
++# the "MSE cheaply prefilters a hyperparameter combo per layer, judged eval refines" structure
++# run_tiered_search uses doesn't apply here (there's no training loss to prefilter with), so these
++# two get a simpler, dedicated 2-tier flow (full grid at Tier 1, single winner confirmed at Final)
++# instead of being forced through machinery built around a training cost they don't have.
+ 
+ 
+ def load_sweep_rows(path: Path) -> list[dict]:
+@@ -270,9 +309,10 @@ def evaluate_candidates(
+     comparison against the reference candidate later. Every non-skipped result also gets
+     on_pareto_frontier (see mark_pareto_frontier) attached before returning.
+ 
+-    candidates: each a dict with at least {"layer", "mse_weight", "nll_weight"} and whatever
+-    else that variant's retrain function needs (e.g. "alpha"). Usually rows pulled straight from
+-    a sweep JSONL (best_row_per_layer's output) or a hand-built hyperparameter grid for Tier 2.
++    candidates: each a dict with at least {"layer"} plus whatever that variant's build/retrain
++    function needs -- PSR variants need "mse_weight"/"nll_weight" (usually rows pulled straight
++    from a sweep JSONL); the training-free variants (const, stolfo) need only "layer" (const also
++    needs "coeff") since there's no training config to specify at all.
+     """
+     retrain_fn = RETRAIN_FNS[variant]
+     rows = adapter.load_rows(split)[:n_examples]
+@@ -431,6 +471,28 @@ def load_existing_tiered_results(out_path: Path) -> dict[str, list[dict]]:
+     return by_tier
+ 
+ 
++def build_search_context(adapter, seed: int) -> SearchContext:
++    """Shared setup for run_tiered_search AND run_training_free_search -- same model load, same
++    teacher-forced response caching, same SearchContext shape either way. Training-free methods
++    (const, stolfo) don't strictly need train_responses (they never call generate on a response),
++    but SearchContext is one dataclass either family's retrain/build functions read from, so it's
++    simpler to always populate it fully than to special-case what each variant actually touches."""
++    device = "cuda"
++    model, tokenizer = load_model(device, model_name=adapter.MODEL_NAME)
++    for p in model.parameters():
++        p.requires_grad_(False)
++
++    train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
++    dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    return SearchContext(
++        model=model, tokenizer=tokenizer, n_layers=num_layers(model), hidden_size=model.config.hidden_size,
++        cache_dir=adapter.CACHE_DIR, train_items=train_items, dev_items=dev_items,
++        train_responses=train_responses, dev_responses=dev_responses, seed=seed,
++    )
++
++
+ def run_tiered_search(
+     task: str,
+     variant: str,
+@@ -454,20 +516,8 @@ def run_tiered_search(
+               f"Delete {out_path} (or just its 'final' row) to force a rerun.")
+         return
+ 
+-    device = "cuda"
+-    model, tokenizer = load_model(device, model_name=adapter.MODEL_NAME)
+-    for p in model.parameters():
+-        p.requires_grad_(False)
+-
+-    train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
+-    dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
+-    ctx = SearchContext(
+-        model=model, tokenizer=tokenizer, n_layers=num_layers(model), hidden_size=model.config.hidden_size,
+-        cache_dir=adapter.CACHE_DIR, train_items=train_items, dev_items=dev_items,
+-        train_responses=train_responses, dev_responses=dev_responses, seed=seed,
+-    )
++    ctx = build_search_context(adapter, seed)
++    model, tokenizer = ctx.model, ctx.tokenizer
+ 
+     all_results = [{"tier": tier, **r} for tier, rows in existing.items() for r in rows]
+ 
+@@ -543,6 +593,95 @@ def run_tiered_search(
+     print(f"\nWrote full tiered search log to {out_path}")
+ 
+ 
++DEFAULT_TRAINING_FREE_LAYERS = list(range(2, 27, 2))  # SAME dense 13-layer grid every PSR variant's
++# sweep uses -- the whole point of this addition is giving Const/Stolfo the same search rigor,
++# not a coarser one (the old caveman-steer repo's Const only ever checked ~4 fractional layers).
++DEFAULT_CONST_COEFF_GRID = [2, 4, 6, 8, 10, 12, 16, 20, 24, 28]  # src/const/sweep.py's existing grid
++
++
++def run_training_free_search(
++    task: str,
++    variant: str,
++    tier1_n: int = DEFAULT_TIER1_N,
++    final_n: int = DEFAULT_FINAL_N,
++    layers: list[int] | None = None,
++    coeff_grid: list[float] | None = None,
++    seed: int = 42,
++    max_batch_rows: int = DEFAULT_MAX_BATCH_ROWS,
++) -> None:
++    """Const/Stolfo's own tiered search -- same judged-evidence discipline and the same
++    select_constrained_survivors gates as run_tiered_search, but a genuinely simpler 2-tier shape:
++    NO training happens anywhere in either method, so there's no cheap loss to prefilter a
++    hyperparameter combo per layer with (run_tiered_search's Tier 1 role) before paying for judged
++    eval -- the full (layer x coeff) grid for Const, or just (layer) for Stolfo (no free
++    coefficient exists in that method), is cheap enough to judge directly. Tier 1 here IS the full
++    grid; its single top_k=1 winner goes straight to Final. Writes the same {variant}_tiered_
++    search.jsonl shape (tier1 + final rows, no tier2) that summarize_all_variants already reads."""
++    if variant not in TRAINING_FREE_VARIANTS:
++        raise ValueError(f"{variant} is not training-free -- use run_tiered_search instead")
++
++    adapter = get_adapter(task)
++    eval_adapter = get_eval_adapter(task)
++    out_path = adapter.RESULTS_DIR / f"{variant}_tiered_search.jsonl"
++    existing = load_existing_tiered_results(out_path)
++    if "final" in existing:
++        print(f"{out_path} already has a Final result for '{variant}' -- fully done, skipping. "
++              f"Delete {out_path} (or just its 'final' row) to force a rerun.")
++        return
++
++    ctx = build_search_context(adapter, seed)
++    layers = layers if layers is not None else DEFAULT_TRAINING_FREE_LAYERS
++
++    all_results = [{"tier": tier, **r} for tier, rows in existing.items() for r in rows]
++
++    def write(tier: str, rows: list[dict]) -> None:
++        for r in rows:
++            all_results.append({"tier": tier, **r})
++        with out_path.open("w") as f:
++            for r in all_results:
++                f.write(json.dumps(r) + "\n")
++
++    if "tier1" in existing:
++        print(f"Tier 1 already complete ({len(existing['tier1'])} rows) -- reusing from {out_path}")
++        tier1_results = existing["tier1"]
++    else:
++        if variant == "const":
++            coeff_grid = coeff_grid if coeff_grid is not None else DEFAULT_CONST_COEFF_GRID
++            tier1_candidates = [{"layer": l, "coeff": c} for l in layers for c in coeff_grid]
++        else:  # stolfo -- no coefficient, one candidate per layer
++            tier1_candidates = [{"layer": l} for l in layers]
++        print(f"== Tier 1 (= full grid, no training to prefilter with): {len(tier1_candidates)} "
++              f"candidates, n={tier1_n}, real judged evaluation ==")
++        tier1_results = evaluate_candidates(variant, tier1_candidates, ctx, adapter, eval_adapter, tier1_n, split="dev", max_batch_rows=max_batch_rows)
++        write("tier1", tier1_results)
++
++    winner_list = select_constrained_survivors(tier1_results, top_k=1)
++    winner = winner_list[0] if winner_list else None
++    if winner is None:
++        print("WARNING: every Tier 1 candidate was skipped -- no final confirmation run")
++        return
++    fallback_note = " -- FALLBACK, does not beat/tie Prompt alone" if winner["prompt_floor_fallback"] else ""
++    print(f"Winner{fallback_note}: layer={winner['layer']} coeff={winner.get('coeff', 'n/a')} "
++          f"avg_tokens={winner['avg_tokens']:.1f}")
++
++    print(f"\n== Final: full-size confirmation run, n={final_n}, TEST split ==")
++    final_results = evaluate_candidates(variant, [winner], ctx, adapter, eval_adapter, final_n, split="test", max_batch_rows=max_batch_rows)
++    write("final", final_results)
++    r = final_results[0]
++    print(f"Final correctness (judged_score, mean 0-2): {r['judged_score']:.4f} [{r['ci_lo']:.4f}, {r['ci_hi']:.4f}] (95% CI, n={final_n})")
++    print(f"Final avg_tokens: {r['avg_tokens']:.1f}  (Prompt alone: {r['prompt_avg_tokens']:.1f})")
++
++    prompt_scores = r.get("prompt_baseline_scores")
++    if prompt_scores is not None:
++        diff, diff_lo, diff_hi = paired_bootstrap_diff(r["correctness_scores"], prompt_scores)
++        verdict = "SIGNIFICANTLY BEATS Prompt alone" if diff_lo > 0 else \
++                  "SIGNIFICANTLY WORSE than Prompt alone" if diff_hi < 0 else \
++                  "not significantly different from Prompt alone"
++        print(f"vs. Prompt alone (paired, n={final_n}): diff={diff:.4f} [{diff_lo:.4f}, {diff_hi:.4f}] -- {verdict}")
++
++    print(f"\nWrote full tiered search log to {out_path}")
++
++
+ def summarize_all_variants(task: str) -> dict:
+     """Reads every {variant}_tiered_search.jsonl that exists yet for this task, pulls out each
+     one's Final row (the real, full-n, test-split, judged-evidence winner), prints a comparison
+@@ -605,4 +744,7 @@ if __name__ == "__main__":
+     else:
+         if not args.variant:
+             parser.error("--variant is required unless --summarize is given")
+-        run_tiered_search(args.task, args.variant, args.tier1_n, args.tier2_n, args.final_n, args.top_k_layers, args.seed, args.max_batch_rows)
++        if args.variant in TRAINING_FREE_VARIANTS:
++            run_training_free_search(args.task, args.variant, args.tier1_n, args.final_n, seed=args.seed, max_batch_rows=args.max_batch_rows)
++        else:
++            run_tiered_search(args.task, args.variant, args.tier1_n, args.tier2_n, args.final_n, args.top_k_layers, args.seed, args.max_batch_rows)
+diff --git a/infra/run_baselines_overnight.sh b/infra/run_baselines_overnight.sh
+new file mode 100755
+index 0000000..588feaa
+--- /dev/null
++++ b/infra/run_baselines_overnight.sh
+@@ -0,0 +1,74 @@
++#!/usr/bin/env bash
++# Runs Const's and Stolfo's tiered searches (evals/layer_hparam_search.py --variant const/stolfo),
++# then the reproducible cosine similarity script. Both are training-free -- no gradient descent at
++# all -- so this should be noticeably faster than the PSR-variant overnight runs despite Const's
++# grid being fairly large (13 layers x 10 coefficients = 130 Tier 1 points).
++#
++#   tmux new -s baselines   # then inside: bash infra/run_baselines_overnight.sh
++set -uo pipefail
++
++REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
++export PYTHONPATH="$REPO_ROOT:$REPO_ROOT/src:${PYTHONPATH:-}"
++cd "$REPO_ROOT"
++
++TASK="caveman"
++RESULTS_DIR="results/$TASK"
++TIMESTAMP="$(date '+%Y%m%d_%H%M%S')"
++LOG_FILE="$RESULTS_DIR/baselines_${TIMESTAMP}.log"
++mkdir -p "$RESULTS_DIR"
++exec > >(tee -a "$LOG_FILE") 2>&1
++
++TIER1_N="${TIER1_N:-20}"
++FINAL_N="${FINAL_N:-180}"
++
++echo "################################################################"
++echo "# Const + Stolfo-projection baselines -- starting at $(date)"
++echo "# Log: $LOG_FILE"
++echo "################################################################"
++
++echo ""
++echo "== pre-flight checks =="
++PREFLIGHT_OK=1
++[ -f "openai.key" ] && echo "openai.key: found" || { echo "PRE-FLIGHT FAILURE: openai.key missing"; PREFLIGHT_OK=0; }
++python3 -c "import torch; assert torch.cuda.is_available()" 2>/dev/null && echo "CUDA: available" || { echo "PRE-FLIGHT FAILURE: no CUDA"; PREFLIGHT_OK=0; }
++[ "$PREFLIGHT_OK" = "1" ] || { echo ""; echo "Aborting before touching GPU/API."; exit 1; }
++echo "pre-flight checks passed."
++
++FAILURES=()
++for VARIANT in const stolfo; do
++    echo ""
++    echo "== [$(date '+%Y-%m-%d %H:%M:%S')] $VARIANT =="
++    if python3 -u evals/layer_hparam_search.py --task "$TASK" --variant "$VARIANT" --tier1-n "$TIER1_N" --final-n "$FINAL_N"; then
++        echo "== [$(date '+%Y-%m-%d %H:%M:%S')] OK: $VARIANT =="
++    else
++        echo "== [$(date '+%Y-%m-%d %H:%M:%S')] FAILED: $VARIANT (continuing) =="
++        FAILURES+=("$VARIANT")
++    fi
++done
++
++echo ""
++echo "== cross-variant summary (now includes const/stolfo alongside everything else) =="
++python3 -u evals/layer_hparam_search.py --task "$TASK" --summarize
++
++echo ""
++echo "== reproducible cosine similarity matrix =="
++if python3 -u scripts/compute_cosine_similarities.py --task "$TASK"; then
++    echo "OK: cosine matrix"
++else
++    echo "FAILED: cosine matrix (const/stolfo tiered searches may not have reached Final -- check above)"
++    FAILURES+=("cosine_matrix")
++fi
++
++echo ""
++echo "################################################################"
++if [ "${#FAILURES[@]}" -eq 0 ]; then
++    echo "# DONE at $(date). Completed with no failures."
++else
++    echo "# DONE at $(date) with failures: ${FAILURES[*]} -- rerun this script, already-completed"
++    echo "# variants are skipped (Final already exists), not redone."
++fi
++echo "# Results: $RESULTS_DIR/const_tiered_search.jsonl"
++echo "#          $RESULTS_DIR/stolfo_tiered_search.jsonl"
++echo "#          $RESULTS_DIR/cosine_similarity_matrix.{csv,json}"
++echo "# Full log: $LOG_FILE"
++echo "################################################################"
+diff --git a/scripts/compute_cosine_similarities.py b/scripts/compute_cosine_similarities.py
+new file mode 100644
+index 0000000..69c5995
+--- /dev/null
++++ b/scripts/compute_cosine_similarities.py
+@@ -0,0 +1,147 @@
++"""Systematic cosine similarity across every direction vector this project has, computed from real
++checkpoints/cached pooled activations on disk -- nothing here is copied from a conversation or
++reconstructed by hand. Run this on the actual training machine (needs real torch + the model, for
++const/stolfo's on-the-fly direction recompute -- cheap, since pool_prompt_last_token's cache from
++the tiered searches means no new forward passes are needed for those two).
++
++Sources, and exactly how each is obtained:
++  - psr_proper / psr_conceptor: {variant}_probe_tiered_winner.pt if it exists (the REAL corrected
++    tiered-search winner's checkpoint), else falls back to {variant}_probe.pt with a warning (the
++    sweep()-selected checkpoint, NOT necessarily the tiered search's actual winner -- see this
++    project's own history for why that distinction matters).
++  - s_psr / a_psr: psr_probe.pt / a_psr_probe.pt's own "direction" field directly.
++  - const / stolfo: recomputed from {variant}_tiered_search.jsonl's real Final winner's layer,
++    via the SAME compute_diff_mean_direction / compute_target_projection functions the search
++    itself uses (steering/const/direction.py, steering/stolfo/direction.py) -- not reimplemented
++    here, imported directly, so this can't silently drift from what the search actually did.
++
++Writes results/<task>/cosine_similarity_matrix.{csv,json}.
++"""
++import argparse
++import csv
++import json
++import sys
++from pathlib import Path
++
++import torch
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++from adapters.registry import get_adapter
++from evals.layer_hparam_search import build_search_context, load_existing_tiered_results
++from steering.const.direction import compute_diff_mean_direction
++from steering.psr.data import load_or_pool_prompt_last_token
++from steering.stolfo.direction import compute_target_projection
++
++
++def cos(a: torch.Tensor, b: torch.Tensor) -> float:
++    a, b = a.double(), b.double()
++    return (a @ b / (a.norm() * b.norm())).item()
++
++
++def load_probe_direction(adapter, name: str, prefer_tiered_winner: bool) -> tuple[torch.Tensor, str]:
++    """Returns (direction, source_note). Checks {name}_tiered_winner.pt first if prefer_tiered_winner,
++    else just {name}.pt -- see module docstring."""
++    candidates = [f"{name}_tiered_winner.pt", f"{name}.pt"] if prefer_tiered_winner else [f"{name}.pt"]
++    for fname in candidates:
++        path = adapter.RESULTS_DIR / fname
++        if path.exists():
++            ckpt = torch.load(path, map_location="cpu")
++            note = fname
++            if fname == f"{name}.pt" and prefer_tiered_winner:
++                note += "  ** WARNING: no _tiered_winner.pt found -- this is the sweep()-selected " \
++                        "checkpoint, may NOT be the real tiered-search Final winner **"
++            return ckpt["direction"], note
++    raise FileNotFoundError(f"neither {' nor '.join(candidates)} found in {adapter.RESULTS_DIR}")
++
++
++def recompute_const_or_stolfo_direction(adapter, ctx, variant: str) -> tuple[torch.Tensor, str, dict]:
++    tiered_path = adapter.RESULTS_DIR / f"{variant}_tiered_search.jsonl"
++    existing = load_existing_tiered_results(tiered_path)
++    if "final" not in existing:
++        raise FileNotFoundError(f"{tiered_path} has no Final row -- run its tiered search first.")
++    winner = existing["final"][0]
++    layer = winner["layer"]
++    base_pool, instr_pool = load_or_pool_prompt_last_token(ctx.model, ctx.tokenizer, ctx.train_items, layer, ctx.cache_dir)
++    direction = compute_diff_mean_direction(base_pool, instr_pool)
++    extra = {"layer": layer}
++    if variant == "const":
++        extra["coeff"] = winner.get("coeff")
++    else:
++        extra["target_projection"] = compute_target_projection(instr_pool, direction)
++    return direction, f"{variant}_tiered_search.jsonl Final (layer={layer})", extra
++
++
++def main(task: str) -> None:
++    adapter = get_adapter(task)
++    vectors: dict[str, torch.Tensor] = {}
++    sources: dict[str, str] = {}
++    extras: dict[str, dict] = {}
++
++    for name in ("psr_proper_probe", "psr_conceptor_probe"):
++        try:
++            v, src = load_probe_direction(adapter, name, prefer_tiered_winner=True)
++            vectors[name], sources[name] = v, src
++        except FileNotFoundError as e:
++            print(f"SKIP {name}: {e}")
++
++    for name in ("psr_probe", "a_psr_probe"):
++        try:
++            v, src = load_probe_direction(adapter, name, prefer_tiered_winner=False)
++            vectors[name], sources[name] = v, src
++        except FileNotFoundError as e:
++            print(f"SKIP {name}: {e}")
++
++    need_model = any((adapter.RESULTS_DIR / f"{v}_tiered_search.jsonl").exists() for v in ("const", "stolfo"))
++    if need_model:
++        print("loading model for const/stolfo's on-the-fly direction recompute (cheap -- pooled activations already cached) ...")
++        ctx = build_search_context(adapter, seed=42)
++        for variant in ("const", "stolfo"):
++            try:
++                v, src, extra = recompute_const_or_stolfo_direction(adapter, ctx, variant)
++                vectors[variant], sources[variant], extras[variant] = v, src, extra
++            except FileNotFoundError as e:
++                print(f"SKIP {variant}: {e}")
++
++    if len(vectors) < 2:
++        print("Fewer than 2 vectors available -- nothing to compare. Run the relevant searches first.")
++        return
++
++    names = list(vectors.keys())
++    n = len(names)
++    matrix = [[cos(vectors[a], vectors[b]) for b in names] for a in names]
++    d = next(iter(vectors.values())).shape[0]
++
++    print(f"\n{n} vectors loaded (d={d}):")
++    for name in names:
++        print(f"  {name:<22} source={sources[name]}  ||v||={vectors[name].double().norm().item():.4f}")
++
++    print(f"\n{'':<22}" + "".join(f"{n2:>16}" for n2 in names))
++    for i, a in enumerate(names):
++        print(f"{a:<22}" + "".join(f"{matrix[i][j]:>16.4f}" for j in range(n)))
++
++    out_csv = adapter.RESULTS_DIR / "cosine_similarity_matrix.csv"
++    with out_csv.open("w", newline="") as f:
++        w = csv.writer(f)
++        w.writerow([""] + names)
++        for i, a in enumerate(names):
++            w.writerow([a] + [f"{matrix[i][j]:.4f}" for j in range(n)])
++
++    out_json = adapter.RESULTS_DIR / "cosine_similarity_matrix.json"
++    with out_json.open("w") as f:
++        json.dump({
++            "task": task, "dim": d,
++            "note": f"random-vector noise floor for d={d}: mean|cos|~{1/(d**0.5)*0.8:.4f}ish, "
++                     f"treat anything near that as no real alignment",
++            "sources": sources, "extras": extras,
++            "norms": {k: v.double().norm().item() for k, v in vectors.items()},
++            "names": names, "matrix": matrix,
++        }, f, indent=2)
++    print(f"\nwrote {out_csv}\nwrote {out_json}")
++
++
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--task", default="caveman", choices=["caveman", "ifeval"])
++    args = parser.parse_args()
++    main(args.task)
+diff --git a/steering/stolfo/__init__.py b/steering/stolfo/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/steering/stolfo/direction.py b/steering/stolfo/direction.py
+new file mode 100644
+index 0000000..934435b
+--- /dev/null
++++ b/steering/stolfo/direction.py
+@@ -0,0 +1,12 @@
++"""Companion to steering/const/direction.py's compute_diff_mean_direction -- same base/instr
++activations, but this project's Stolfo-projection method needs one more number Const doesn't:
++the target projection value the correction aims for."""
++import torch
++
++
++def compute_target_projection(instr_activations: torch.Tensor, direction: torch.Tensor) -> float:
++    """instr_activations: (N, d) -- the INSTRUCTED condition's own activations (not base, not the
++    diff). direction: unit vector (d,), from compute_diff_mean_direction. Returns avg_proj exactly
++    as format/find_best_layer.py computes it: proj = hs_instr @ instr_dir; avg_proj = proj.mean()."""
++    proj = instr_activations.float() @ direction.float()
++    return proj.mean().item()
+diff --git a/steering/stolfo/hooks.py b/steering/stolfo/hooks.py
+new file mode 100644
+index 0000000..7e1934f
+--- /dev/null
++++ b/steering/stolfo/hooks.py
+@@ -0,0 +1,54 @@
++"""Stolfo et al. 2025's ACTUAL proposed mechanism (direction_projection_hook / adjust_vectors in
++microsoft/llm-steer-instruct's utils/generation_utils.py), verified against that repo directly --
++NOT the same as this project's Const condition, which implements their OTHER, simpler baseline
++(activation_addition_hook). Confirmed via format/find_best_layer.py:
++
++    instr_dir = last_token_mean_diff[layer_idx] / last_token_mean_diff[layer_idx].norm()
++    proj = hs_instr[:, layer_idx, -1, :] @ instr_dir
++    avg_proj = proj.mean()
++    hook_fn = functools.partial(direction_projection_hook, direction=instr_dir, value_along_direction=avg_proj)
++
++And direction_projection_hook itself:
++    current_projections = v @ u
++    delta = target_values - current_projections
++    adjusted_v = v + delta[:, None] * u
++
++So: h' = h + (target - h.u)*u -- the component of h along u gets REPLACED by target, not offset by
++a fixed amount. The correction magnitude is a genuine (closed-form, non-learned) function of the
++CURRENT activation's own projection -- distinct from both Const (fixed offset regardless of state)
++and this project's PSR gate (a TRAINED probe mapping activation -> coefficient).
++
++Applied UNCONDITIONALLY at every position, matching their reference generate_with_hooks exactly:
++that function has no KV-cache and reprocesses the whole sequence-so-far on every generation step,
++so the hook fires on every position (prompt AND every generated token) every single call -- not
++"last token only" at application time, even though extraction (the direction/target themselves)
++IS last-token-only. Do NOT add an is_generating/seq_len==1 gate here the way steering/psr/gate.py
++does -- that would silently change the method being replicated.
++
++One real, documented divergence from their literal reference loop: this project's generation path
++uses HF's KV-cached model.generate() (steering.hooks.steering_hook fires on whatever `hidden` shape
++a given forward call produces, unmodified), so in practice the clamp fires once over the whole
++prompt during prefill, then once per NEW token during decode -- it does NOT re-clamp
++already-generated earlier tokens on every subsequent step the way their uncached from-scratch loop
++literally does (each of their steps reprocesses the ENTIRE sequence so far). Re-clamping stale
++positions repeatedly has no discernible reason to change the OUTPUT (their delta only ever depends
++on that position's own current activation and the fixed target -- clamping the same fixed prompt
++tokens to the same target repeatedly is idempotent, not cumulative), but it is a real speed
++tradeoff being made deliberately here, not an oversight -- flagging it so it doesn't get "verified"
++as identical without this caveat.
++"""
++from typing import Callable
++
++import torch
++
++
++def make_stolfo_projection_hook(direction: torch.Tensor, target_projection: float) -> Callable[[torch.Tensor], torch.Tensor]:
++    """direction: unit vector (d,). target_projection: scalar (Python float or 0-d tensor) -- the
++    instructed condition's mean projection onto direction, computed once, not per-example."""
++    def hook_fn(hidden: torch.Tensor) -> torch.Tensor:
++        d = direction.to(hidden.dtype).to(hidden.device)
++        current_proj = hidden.float() @ d.float()  # [batch, seq_len]
++        delta = (float(target_projection) - current_proj).to(hidden.dtype)  # [batch, seq_len]
++        return hidden + delta.unsqueeze(-1) * d
++
++    return hook_fn

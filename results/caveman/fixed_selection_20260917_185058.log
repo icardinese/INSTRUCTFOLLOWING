@@ -1,0 +1,130 @@
+################################################################
+# avg_tokens-primary re-selection -- starting at Thu Sep 17 06:50:58 PM UTC 2026
+# Log: results/caveman/fixed_selection_20260917_185058.log
+################################################################
+
+== pre-flight checks ==
+openai.key: found
+CUDA: available
+pre-flight checks passed -- proceeding.
+
+== conceptor: truncating to force re-selection under the fixed ranking ==
+  backed up: results/caveman/conceptor_tiered_search.jsonl -> results/caveman/conceptor_tiered_search.jsonl.pre_avg_tokens_fix_20260917_185058
+  rewrote results/caveman/conceptor_tiered_search.jsonl: kept tiers ['tier1', 'tier2'] (43 rows)
+
+== conceptor: running (reuses whatever's left on disk, evaluates only what's missing) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:24,  3.98it/s]Loading weights:   1%|          | 2/339 [00:00<01:32,  3.65it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.89it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 36.29it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 53.59it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 65.98it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 74.62it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 80.59it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 84.91it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 87.90it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 90.35it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.09it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 93.26it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 93.97it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 94.56it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 95.05it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.46it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 95.55it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.59it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 96.11it/s]Loading weights:  65%|██████▌   | 221/339 [00:02<00:01, 93.92it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.84it/s]Loading weights:  72%|███████▏  | 244/339 [00:03<00:01, 91.85it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 97.93it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 97.10it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 97.03it/s]Loading weights:  86%|████████▋ | 293/339 [00:03<00:00, 94.65it/s]Loading weights:  90%|████████▉ | 305/339 [00:03<00:00, 95.25it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 98.01it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 97.35it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.80it/s]
+Tier 1 already complete (13 rows) -- reusing from results/caveman/conceptor_tiered_search.jsonl
+Tier 1 survivors (top 3 by avg_tokens, among those beating/tying Prompt and not significantly less correct than the grid's best): [16, 18, 14]
+Tier 2 already complete (30 rows) -- reusing from results/caveman/conceptor_tiered_search.jsonl
+Tier 2 winner: layer=16, {'layer': 16, 'alpha': 2.0, 'mse_weight': 1.0, 'nll_weight': 0.0, 'baseline_mse': 33.289419670104984, 'baseline_nll': 60.35903755187988, 'final_mse': 14.824884872436524, 'final_nll': 42.676613845825194, 'skipped': False, 'n': 20, 'judged_score': 2.0, 'ci_lo': 2.0, 'ci_hi': 2.0, 'optimize_score': 1.05, 'optimize_ci_lo': 1.0, 'optimize_ci_hi': 1.15, 'fully_correct_rate': 1.0, 'avg_tokens': 85.55, 'prompt_fully_correct_rate': 0.9, 'prompt_avg_tokens': 60.65, 'on_pareto_frontier': True, 'prompt_floor_fallback': False}
+
+== Final: full-size confirmation run, n=180, TEST split ==
+Final correctness (judged_score, mean 0-2): 1.9667 [1.9389, 1.9889] (95% CI, n=180)
+Final fully_correct_rate (matches the paper's Figure 1 metric): 0.9667  (Prompt alone: 0.9500)
+Final optimize_score (mean judged conciseness or -avg_tokens): 1.0000 [1.0000, 1.0000]
+Final avg_tokens: 95.6  (Prompt alone: 57.8)
+vs. Prompt alone (paired, n=180): diff=0.0167 [-0.0222, 0.0556] -- not significantly different from Prompt alone
+
+Wrote full tiered search log to results/caveman/conceptor_tiered_search.jsonl
+conceptor corrected winner: layer=16 alpha=2.0 mse_weight=1.0 nll_weight=0.0 avg_tokens=95.6
+
+== proper: truncating to force re-selection under the fixed ranking ==
+  backed up: results/caveman/proper_tiered_search.jsonl -> results/caveman/proper_tiered_search.jsonl.pre_avg_tokens_fix_20260917_185058
+  rewrote results/caveman/proper_tiered_search.jsonl: kept tiers ['tier1'] (13 rows)
+
+== proper: running (reuses whatever's left on disk, evaluates only what's missing) ==
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:04,  1.84it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.62it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 34.06it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:06, 51.15it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 63.62it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 72.64it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 79.33it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 84.18it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 87.41it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 89.75it/s]Loading weights:  33%|███▎      | 113/339 [00:01<00:02, 89.31it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 94.03it/s]Loading weights:  40%|████      | 137/339 [00:02<00:02, 91.85it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 95.01it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 95.30it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.51it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 95.67it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.94it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.63it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 95.69it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 95.02it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 95.55it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 95.52it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 95.62it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 95.92it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 95.59it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 95.79it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 95.99it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.08it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.57it/s]
+Tier 1 already complete (13 rows) -- reusing from results/caveman/proper_tiered_search.jsonl
+Tier 1 survivors (top 3 by avg_tokens, among those beating/tying Prompt and not significantly less correct than the grid's best): [18, 14, 16]
+
+== Tier 2: hyperparameter sweep at surviving layer(s), n=20 ==
+15 (layer, hyperparameter) combos to evaluate at the surviving layer(s)
+Tier 2 winner: layer=14, {'layer': 14, 'mse_weight': 0.0, 'nll_weight': 1.0, 'baseline_mse': 33.7617653465271, 'baseline_nll': 60.4920206451416, 'final_mse': 25.539210300445557, 'final_nll': 31.13188150405884, 'skipped': False, 'n': 20, 'judged_score': 2.0, 'ci_lo': 2.0, 'ci_hi': 2.0, 'optimize_score': 1.0, 'optimize_ci_lo': 1.0, 'optimize_ci_hi': 1.0, 'fully_correct_rate': 1.0, 'avg_tokens': 88.9, 'prompt_fully_correct_rate': 0.9, 'prompt_avg_tokens': 60.65, 'on_pareto_frontier': True, 'prompt_floor_fallback': False}
+
+== Final: full-size confirmation run, n=180, TEST split ==
+Final correctness (judged_score, mean 0-2): 1.9722 [1.9444, 1.9944] (95% CI, n=180)
+Final fully_correct_rate (matches the paper's Figure 1 metric): 0.9722  (Prompt alone: 0.9444)
+Final optimize_score (mean judged conciseness or -avg_tokens): 1.0000 [1.0000, 1.0000]
+Final avg_tokens: 88.4  (Prompt alone: 57.8)
+vs. Prompt alone (paired, n=180): diff=0.0278 [-0.0111, 0.0667] -- not significantly different from Prompt alone
+
+Wrote full tiered search log to results/caveman/proper_tiered_search.jsonl
+proper corrected winner: layer=14 alpha=n/a mse_weight=0.0 nll_weight=1.0 avg_tokens=88.4
+
+== cross-variant summary (includes matrix/selfproj from before, untouched by this fix) ==
+variant               status                                          layer   correctness   conciseness       vs Prompt
+conceptor             done                                               16         1.967         1.000     ties Prompt
+proper                done                                               14         1.972         1.000     ties Prompt
+
+wrote results/caveman/tiered_search_summary.json
+
+== conceptor: regenerating a real checkpoint at the corrected winner -> results/caveman/psr_conceptor_probe_tiered_winner.pt ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:23,  4.03it/s]Loading weights:   1%|          | 2/339 [00:00<01:31,  3.66it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 11.96it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 36.53it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 54.20it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 66.64it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 75.32it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 81.52it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 85.88it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 88.99it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 90.90it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.56it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 93.69it/s]Loading weights:  40%|████      | 136/339 [00:02<00:02, 89.89it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 96.46it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 96.35it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 96.36it/s]Loading weights:  55%|█████▍    | 185/339 [00:02<00:01, 93.95it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 97.31it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 97.28it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 97.27it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.66it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.42it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.54it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.64it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.45it/s]Loading weights:  86%|████████▌ | 292/339 [00:03<00:00, 91.67it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 97.81it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.73it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.97it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 84.18it/s]
+loading/pooling activations at layer 16 for the conceptor and diff-in-means direction
+epoch=0 dev_mse=15.0392 dev_nll=42.9925 -- checkpointing
+epoch=1 dev_mse=14.8920 dev_nll=42.8089 -- checkpointing
+epoch=2 dev_mse=14.8205 dev_nll=42.6750 -- checkpointing
+task=caveman layer=16 alpha=2.0 baseline_dev_mse=33.2894 final_dev_mse=14.8205
+
+== proper: regenerating a real checkpoint at the corrected winner -> results/caveman/psr_proper_probe_tiered_winner.pt ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:33,  3.60it/s]Loading weights:   1%|          | 2/339 [00:00<01:43,  3.25it/s]Loading weights:   5%|▍         | 16/339 [00:00<00:10, 30.91it/s]Loading weights:   8%|▊         | 28/339 [00:00<00:06, 44.84it/s]Loading weights:  12%|█▏        | 41/339 [00:01<00:04, 60.22it/s]Loading weights:  16%|█▌        | 53/339 [00:01<00:04, 70.01it/s]Loading weights:  19%|█▉        | 64/339 [00:01<00:03, 69.37it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 80.65it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 84.96it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 88.04it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 90.06it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 91.81it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 92.98it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:02, 93.72it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 94.21it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 94.44it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 94.18it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 94.70it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.14it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 95.52it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 95.71it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.09it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.28it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.03it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.10it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.35it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 96.47it/s]Loading weights:  93%|█████████▎| 316/339 [00:03<00:00, 91.61it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 98.22it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.26it/s]
+epoch=0 dev_mse=19.8874 dev_nll=32.1691 -- checkpointing
+epoch=1 dev_mse=23.0405 dev_nll=31.1837 -- checkpointing
+epoch=2 dev_mse=25.4881 dev_nll=31.1662 -- checkpointing
+task=caveman layer=14 baseline_dev_mse=33.7618 final_dev_mse=25.4881
+
+== direction-only ablation on psr_proper_probe_tiered_winner.pt ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:26,  3.89it/s]Loading weights:   1%|          | 2/339 [00:00<01:33,  3.60it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.79it/s]Loading weights:   5%|▌         | 17/339 [00:00<00:09, 33.80it/s]Loading weights:   9%|▊         | 29/339 [00:00<00:05, 51.98it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 67.03it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 75.54it/s]Loading weights:  19%|█▉        | 64/339 [00:01<00:03, 76.37it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 86.72it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 89.18it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 91.07it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.51it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 93.44it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 93.89it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:02, 94.27it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 94.97it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.15it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 94.49it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.08it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.49it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 95.51it/s]Loading weights:  69%|██████▊   | 233/339 [00:03<00:01, 93.09it/s]Loading weights:  72%|███████▏  | 244/339 [00:03<00:01, 91.59it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 97.79it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 97.41it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 97.18it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.80it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 96.75it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.32it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.38it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.46it/s]
+loaded psr_proper_probe_tiered_winner.pt: layer=14, ||direction||=1.8383 (renormalized to 1.0 for this ablation)
+
+== Calibration: sweeping 5 coefficients on dev (n=20), ALONE condition only ==
+  coeff=6.0    alone_avg_tokens=149.9  alone_correct=1.900  alone_coherent_rate=1.00
+  coeff=12.0   alone_avg_tokens=149.9  alone_correct=1.950  alone_coherent_rate=1.00
+  coeff=20.0   alone_avg_tokens=149.9  alone_correct=1.950  alone_coherent_rate=1.00
+  coeff=28.0   alone_avg_tokens=149.1  alone_correct=1.950  alone_coherent_rate=1.00
+  coeff=36.0   alone_avg_tokens=133.6  alone_correct=2.000  alone_coherent_rate=1.00
+
+Calibration winner: coeff=36.0 (lowest alone_avg_tokens among candidates clearing the 0.85 coherent-rate floor)
+
+== Final: coeff=36.0, test split (n=180), BOTH alone and combined ==
+
+Alone:    avg_tokens=131.5  correct=1.961 [1.933, 1.989]  coherent_rate=1.00
+Combined: avg_tokens=33.6  correct=1.778 [1.711, 1.833]  coherent_rate=1.00
+
+wrote results/caveman/ablation_direction_only_psr_proper_probe_tiered_winner.json
+
+Compare this against the SAME checkpoint's real (gated) generation results to answer the actual ablation question: does removing the gate hurt, help, or do nothing?
+
+== direction-only ablation on psr_conceptor_probe_tiered_winner.pt ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:24,  3.99it/s]Loading weights:   1%|          | 2/339 [00:00<01:32,  3.65it/s]Loading weights:   1%|▏         | 5/339 [00:00<00:34,  9.64it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 37.08it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 54.55it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 66.78it/s]Loading weights:  16%|█▌        | 53/339 [00:01<00:03, 72.98it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 82.17it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 86.03it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 88.68it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 90.89it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.32it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 93.28it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 93.92it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 94.66it/s]Loading weights:  47%|████▋     | 161/339 [00:02<00:01, 92.66it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 96.15it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 95.88it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.63it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.81it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.14it/s]Loading weights:  69%|██████▊   | 233/339 [00:03<00:01, 93.90it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.98it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.87it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.87it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.81it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.59it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 96.34it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.48it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.19it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.89it/s]
+loaded psr_conceptor_probe_tiered_winner.pt: layer=16, ||direction||=1.0000 (renormalized to 1.0 for this ablation)
+
+== Calibration: sweeping 5 coefficients on dev (n=20), ALONE condition only ==
+  coeff=6.0    alone_avg_tokens=149.9  alone_correct=1.950  alone_coherent_rate=1.00
+  coeff=12.0   alone_avg_tokens=149.8  alone_correct=1.900  alone_coherent_rate=1.00
+  coeff=20.0   alone_avg_tokens=149.9  alone_correct=1.900  alone_coherent_rate=1.00
+  coeff=28.0   alone_avg_tokens=148.8  alone_correct=2.000  alone_coherent_rate=1.00
+  coeff=36.0   alone_avg_tokens=137.4  alone_correct=2.000  alone_coherent_rate=1.00
+
+Calibration winner: coeff=36.0 (lowest alone_avg_tokens among candidates clearing the 0.85 coherent-rate floor)
+
+== Final: coeff=36.0, test split (n=180), BOTH alone and combined ==
+
+Alone:    avg_tokens=140.2  correct=1.956 [1.922, 1.983]  coherent_rate=1.00
+Combined: avg_tokens=22.1  correct=1.361 [1.294, 1.433]  coherent_rate=1.00
+
+wrote results/caveman/ablation_direction_only_psr_conceptor_probe_tiered_winner.json
+
+Compare this against the SAME checkpoint's real (gated) generation results to answer the actual ablation question: does removing the gate hurt, help, or do nothing?
+
+################################################################
+# DONE at Thu Sep 17 09:07:30 PM UTC 2026. Completed with no failures.
+# Compare *_tiered_search.jsonl against *.pre_avg_tokens_fix_20260917_185058 to see what changed.
+# Full log: results/caveman/fixed_selection_20260917_185058.log
+################################################################
