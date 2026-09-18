@@ -118,6 +118,66 @@ def _retrain_single_gate(row: dict, ctx: SearchContext):
     return make_inference_hook(gate, result["direction"].to("cuda"))
 
 
+def _clamp_direction_and_target(row: dict, ctx: SearchContext):
+    """Shared closed-form extraction for every clamp variant: unit DiM direction from the prompt's
+    last token, and the target projection as the INSTRUCTED pole's own mean projection onto it --
+    exactly what _build_stolfo does, factored out so the gated variants cannot drift from the
+    ungated baseline they're being compared against."""
+    from steering.const.direction import compute_diff_mean_direction
+    from steering.psr.data import load_or_pool_prompt_last_token
+    from steering.stolfo.direction import compute_target_projection
+
+    base_pool, instr_pool = load_or_pool_prompt_last_token(
+        ctx.model, ctx.tokenizer, ctx.train_items, row["layer"], ctx.cache_dir)
+    direction = compute_diff_mean_direction(base_pool, instr_pool)
+    return direction, compute_target_projection(instr_pool, direction)
+
+
+def _build_stolfo_response_only(row: dict, ctx: SearchContext):
+    """Stolfo's clamp restricted to PSR's intervention surface (response tokens only). Pairs with
+    _build_stolfo (all positions) to isolate SURFACE at fixed functional form -- no training."""
+    from steering.clamp.hooks import make_clamp_hook
+    direction, target = _clamp_direction_and_target(row, ctx)
+    return make_clamp_hook(direction, target, response_only=True)
+
+
+def _build_const_response_only(row: dict, ctx: SearchContext):
+    """Const's additive steering restricted to response tokens. Pairs with _build_const (all
+    positions) to isolate SURFACE at fixed additive form -- the other half of the 2x2 that
+    separates 'clamping beats adding' from 'touching the prompt beats not touching it'."""
+    from steering.const.direction import compute_diff_mean_direction
+    from steering.const.hooks import make_const_hook
+    from steering.psr.data import load_or_pool_prompt_last_token
+
+    base_pool, instr_pool = load_or_pool_prompt_last_token(
+        ctx.model, ctx.tokenizer, ctx.train_items, row["layer"], ctx.cache_dir)
+    direction = compute_diff_mean_direction(base_pool, instr_pool)
+    base_hook = make_const_hook(direction, row["coeff"])
+
+    def hook_fn(hidden):
+        if hidden.shape[1] > 1:   # prefill -- same guard make_inference_hook uses
+            return hidden
+        return base_hook(hidden)
+
+    return hook_fn
+
+
+def _retrain_sg_clamp(row: dict, ctx: SearchContext):
+    """SG+Clamp: one trained gate scaling the closed-form clamp shortfall at one layer."""
+    from src.psr.clamp_gate.train import train_one_config
+    from steering.clamp.hooks import make_gated_clamp_hook
+
+    result = train_one_config(
+        ctx.model, ctx.tokenizer, [row["layer"]], ctx.seed, ctx.n_layers, ctx.hidden_size, "cuda",
+        ctx.train_items, ctx.dev_items, ctx.train_responses, ctx.dev_responses, ctx.cache_dir,
+        mse_weight=row["mse_weight"], nll_weight=row["nll_weight"],
+    )
+    l = row["layer"]
+    gate = GateState(result["gates"][l]["weight"].to("cuda"), result["gates"][l]["bias"].to("cuda"),
+                      result["gates"][l]["coeff_bias"].to("cuda"))
+    return make_gated_clamp_hook(gate, result["directions"][l].to("cuda"), result["targets"][l])
+
+
 def _retrain_conceptor(row: dict, ctx: SearchContext):
     from src.psr.conceptor.train import train_one_config
     from steering.psr.gate import make_inference_hook
@@ -206,8 +266,14 @@ RETRAIN_FNS = {
     "conceptor_selfproj": _retrain_conceptor_selfproj,
     "const": _build_const,
     "stolfo": _build_stolfo,
+    # Surface-ablation twins: same direction and form as their namesakes, PSR's response-only
+    # surface instead of all-positions. Training-free.
+    "const_resp": _build_const_response_only,
+    "stolfo_resp": _build_stolfo_response_only,
+    # Gated clamp: PSR's learned gate scaling Stolfo's closed-form shortfall.
+    "sg_clamp": _retrain_sg_clamp,
 }
-TRAINING_FREE_VARIANTS = {"const", "stolfo"}  # no gradient descent at all -- see run_training_free_search:
+TRAINING_FREE_VARIANTS = {"const", "stolfo", "const_resp", "stolfo_resp"}  # no gradient descent at all -- see run_training_free_search:
 # the "MSE cheaply prefilters a hyperparameter combo per layer, judged eval refines" structure
 # run_tiered_search uses doesn't apply here (there's no training loss to prefilter with), so these
 # two get a simpler, dedicated 2-tier flow (full grid at Tier 1, single winner confirmed at Final)
