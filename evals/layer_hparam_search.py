@@ -102,6 +102,22 @@ def _retrain_proper(row: dict, ctx: SearchContext):
     return make_inference_hook(gate, result["direction"].to("cuda"))
 
 
+def _retrain_single_gate(row: dict, ctx: SearchContext):
+    """SG: trained gate, FROZEN diff-in-means direction. Identical plumbing to _retrain_proper --
+    same make_inference_hook, same GateState -- because SG and S-PSR differ only in whether
+    `direction` was in the optimizer during training, not in how the correction is applied."""
+    from src.psr.single_gate.train import train_one_config
+    from steering.psr.gate import make_inference_hook
+
+    result = train_one_config(
+        ctx.model, ctx.tokenizer, row["layer"], ctx.seed, ctx.n_layers, ctx.hidden_size, "cuda",
+        ctx.train_items, ctx.dev_items, ctx.train_responses, ctx.dev_responses, ctx.cache_dir,
+        mse_weight=row["mse_weight"], nll_weight=row["nll_weight"],
+    )
+    gate = GateState(result["weight"].to("cuda"), result["bias"].to("cuda"), result["coeff_bias"].to("cuda"))
+    return make_inference_hook(gate, result["direction"].to("cuda"))
+
+
 def _retrain_conceptor(row: dict, ctx: SearchContext):
     from src.psr.conceptor.train import train_one_config
     from steering.psr.gate import make_inference_hook
@@ -181,6 +197,10 @@ def _build_stolfo(row: dict, ctx: SearchContext):
 # a false uniformity across methods that don't actually share a signature.
 RETRAIN_FNS = {
     "proper": _retrain_proper,
+    # key is "sg" so run_tiered_search's psr_{variant}_sweep.jsonl resolves to psr_sg_sweep.jsonl,
+    # which is what src/psr/single_gate/train.py writes. A mismatch here fails at the sweep-file
+    # existence check with a confusing "run --sweep first" message even though the sweep exists.
+    "sg": _retrain_single_gate,
     "conceptor": _retrain_conceptor,
     "conceptor_matrix": _retrain_conceptor_matrix,
     "conceptor_selfproj": _retrain_conceptor_selfproj,
