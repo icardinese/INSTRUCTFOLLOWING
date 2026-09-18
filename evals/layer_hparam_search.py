@@ -23,6 +23,7 @@ see BATCHED_STEERING.md for why batching heterogeneous configs together is exact
 """
 import argparse
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -269,6 +270,21 @@ def mark_pareto_frontier(results: list[dict]) -> list[dict]:
     ]
 
 
+JUDGE_CONCURRENCY = 12  # score_response is 2 sequential blocking OpenAI calls each -- purely
+# I/O-bound, safe to parallelize (each response is scored independently, no shared state). 12 is
+# a conservative starting point re: rate limits, not measured against this project's actual
+# tier/org limits -- raise it if judging is still the bottleneck and you're not hitting 429s.
+
+
+def _score_all_concurrently(eval_adapter, rows: list[dict], responses: list[str]) -> list[dict]:
+    """Was a plain list comprehension calling eval_adapter.score_response one at a time -- for a
+    130-candidate x 20-example grid (Const's Tier 1) that's 2600 responses x 2 sequential judge
+    calls each = 5200 blocking round-trips end to end. Judging, not generation batching, was the
+    actual bottleneck; this is the fix."""
+    with ThreadPoolExecutor(max_workers=JUDGE_CONCURRENCY) as pool:
+        return list(pool.map(lambda pair: eval_adapter.score_response(*pair), zip(rows, responses)))
+
+
 def evaluate_candidates(
     variant: str,
     candidates: list[dict],
@@ -355,7 +371,7 @@ def evaluate_candidates(
         resolved_optimize_field = "conciseness"
 
     prompt_responses = responses_by_group[_PROMPT_BASELINE_GROUP]
-    prompt_baseline_scores = [eval_adapter.score_response(row, resp)[primary_field] for row, resp in zip(rows, prompt_responses)]
+    prompt_baseline_scores = [d[primary_field] for d in _score_all_concurrently(eval_adapter, rows, prompt_responses)]
     prompt_fully_correct_rate = _fully_correct_rate(prompt_baseline_scores, primary_field_max)
     prompt_avg_tokens = _avg_tokens(ctx, prompt_responses)
 
@@ -365,7 +381,7 @@ def evaluate_candidates(
             results.append({**candidate, "skipped": True})
             continue
         responses = responses_by_group[i]
-        score_dicts = [eval_adapter.score_response(row, resp) for row, resp in zip(rows, responses)]
+        score_dicts = _score_all_concurrently(eval_adapter, rows, responses)
         correctness_scores = [d[primary_field] for d in score_dicts]
         point, lo, hi = bootstrap_ci(correctness_scores)
 
