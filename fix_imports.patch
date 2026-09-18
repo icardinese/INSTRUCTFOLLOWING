@@ -1,0 +1,23 @@
+--- a/src/psr/all_layer/train.py
++++ b/src/psr/all_layer/train.py
+@@ -47,7 +47,7 @@
+ from adapters.registry import get_adapter
+ from core.generation_cache import load_or_compute_responses
+ from core.model_common import generate_response, load_model, num_layers
+-from core.seed import set_seed
++from core.reproducibility import set_seed
+ from core.sweep import run_grid_sweep
+ from steering.psr.data import load_or_pool_prompt_last_token_all_layers
+ from steering.psr.gate import init_gate_state
+--- a/steering/psr/multi_gate.py
++++ b/steering/psr/multi_gate.py
+@@ -33,7 +33,8 @@
+ """
+ import torch
+ 
+-from steering.hooks import get_decoder_layers, rewrap_hidden, unwrap_hidden
++from core.model_common import get_decoder_layers
++from steering.hooks import rewrap_hidden, unwrap_hidden
+ from steering.psr.gate import GateState, answer_only_mask, coefficient
+ 
+ 

@@ -1,0 +1,84 @@
+################################################################
+# A-PSR (all layers) + Multi-Gate ablation -- starting at Fri Sep 18 07:48:43 PM UTC 2026
+# Task: caveman   Log: results/caveman/all_layer_20260918_194842.log
+################################################################
+
+== pre-flight checks ==
+openai.key: found
+CUDA: available
+pre-flight checks passed.
+
+== [2026-09-18 19:48:45] START: A-PSR (trained directions), both loss configs ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:33,  3.63it/s]Loading weights:   1%|          | 2/339 [00:00<01:42,  3.30it/s]Loading weights:   5%|▍         | 16/339 [00:00<00:10, 31.49it/s]Loading weights:   8%|▊         | 28/339 [00:00<00:06, 45.70it/s]Loading weights:  12%|█▏        | 40/339 [00:01<00:05, 59.29it/s]Loading weights:  16%|█▌        | 53/339 [00:01<00:03, 71.99it/s]Loading weights:  19%|█▊        | 63/339 [00:01<00:03, 74.70it/s]Loading weights:  23%|██▎       | 77/339 [00:01<00:03, 79.59it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 86.97it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 90.41it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.87it/s]Loading weights:  37%|███▋      | 125/339 [00:01<00:02, 92.52it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 96.73it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 97.45it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 97.90it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 98.33it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 98.10it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 98.50it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 98.60it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 97.86it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 98.05it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 98.50it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 98.77it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 98.53it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 98.83it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 98.94it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 98.89it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 98.79it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 98.70it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 85.42it/s]
+psr_all_layer sweep: 2 loss configs x 28 layers (all layers, no layer sweep -- A-PSR has no layer hyperparameter)
+psr_all_layer mse_weight=1.0 nll_weight=0.0 final_mse=2.7830 final_nll=34.8288 -> psr_all_layer_probe_mse.pt
+psr_all_layer mse_weight=0.0 nll_weight=1.0 final_mse=36.0090 final_nll=39.8681 -> psr_all_layer_probe_nll.pt
+
+wrote 2 sweep rows to results/caveman/psr_all_layer_sweep.jsonl
+checkpoints saved per loss config -- compare them by JUDGED evaluation (scripts/eval_all_layer_variants.py), not by final_mse across different objectives
+== [2026-09-18 19:52:39] OK: A-PSR (trained directions), both loss configs ==
+
+== [2026-09-18 19:52:39] START: Multi-Gate ablation (diff-in-means directions), both loss configs ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<02:57,  1.90it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 11.99it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 35.22it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 52.75it/s]Loading weights:  12%|█▏        | 42/339 [00:00<00:04, 65.70it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 75.10it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 81.05it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 85.69it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 89.55it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 92.37it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 94.31it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 95.71it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 96.63it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 96.83it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 97.37it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 97.77it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 97.98it/s]Loading weights:  58%|█████▊    | 196/339 [00:02<00:01, 93.32it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 99.90it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 98.83it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 98.84it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 98.80it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 99.02it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 98.97it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 98.16it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 98.30it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 98.52it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 98.70it/s]Loading weights:  97%|█████████▋| 329/339 [00:03<00:00, 96.44it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 85.97it/s]
+psr_multi_gate sweep: 2 loss configs x 28 layers (all layers, no layer sweep -- A-PSR has no layer hyperparameter)
+psr_multi_gate mse_weight=1.0 nll_weight=0.0 final_mse=11.5530 final_nll=38.5702 -> psr_multi_gate_probe_mse.pt
+psr_multi_gate mse_weight=0.0 nll_weight=1.0 final_mse=15.1315 final_nll=36.7523 -> psr_multi_gate_probe_nll.pt
+
+wrote 2 sweep rows to results/caveman/psr_multi_gate_sweep.jsonl
+checkpoints saved per loss config -- compare them by JUDGED evaluation (scripts/eval_all_layer_variants.py), not by final_mse across different objectives
+== [2026-09-18 19:56:26] OK: Multi-Gate ablation (diff-in-means directions), both loss configs ==
+
+== [2026-09-18 19:56:26] START: judged evaluation of all 4 configs (alone + combined) vs Base/Prompt ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<02:56,  1.91it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 12.06it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 35.30it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 52.96it/s]Loading weights:  12%|█▏        | 42/339 [00:00<00:04, 65.79it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 75.37it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 82.12it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:02, 87.03it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 90.35it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 92.82it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 94.59it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 95.95it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 96.87it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 97.47it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 97.99it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 98.29it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 98.28it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 98.38it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 98.61it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 98.82it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 98.99it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 98.95it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 99.16it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 98.98it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 98.57it/s]Loading weights:  86%|████████▋ | 293/339 [00:03<00:00, 96.40it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 99.70it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 99.48it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 99.45it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 86.43it/s]
+
+generating Base and Prompt baselines once (n=180, shared across all configs) ...
+
+== A-PSR (MSE) ==
+   28 layers hooked, direction_source=trained
+
+== A-PSR (NLL) ==
+   28 layers hooked, direction_source=trained
+
+== Multi-Gate (MSE) ==
+   28 layers hooked, direction_source=diff_in_means
+
+== Multi-Gate (NLL) ==
+   28 layers hooked, direction_source=diff_in_means
+
+condition                       avg_tokens   correct   coherent
+---------------------------------------------------------------
+base                                 149.9     1.933       1.00
+prompt                                57.9     1.944       1.00
+A-PSR (MSE) alone                     85.4     1.983       1.00
+Prompt + A-PSR (MSE)                  40.9     1.756       1.00
+A-PSR (NLL) alone                    114.6     1.972       1.00
+Prompt + A-PSR (NLL)                  68.6     1.672       0.94
+Multi-Gate (MSE) alone                92.9     1.983       1.00
+Prompt + Multi-Gate (MSE)             31.7     1.800       1.00
+Multi-Gate (NLL) alone               100.9     1.994       1.00
+Prompt + Multi-Gate (NLL)             29.7     1.739       1.00
+
+== paired vs Prompt alone (n=180) ==
+  A-PSR (MSE) alone              correctness diff=-0.0389 [-0.0722, -0.0056] -- WORSE than Prompt   (tokens 85.4 vs 57.9)
+  Prompt + A-PSR (MSE)           correctness diff=+0.1889 [+0.1333, +0.2500] -- BEATS Prompt   (tokens 40.9 vs 57.9)
+  A-PSR (NLL) alone              correctness diff=-0.0278 [-0.0667, +0.0111] -- ties Prompt   (tokens 114.6 vs 57.9)
+  Prompt + A-PSR (NLL)           correctness diff=+0.2722 [+0.2056, +0.3500] -- BEATS Prompt   (tokens 68.6 vs 57.9)
+  Multi-Gate (MSE) alone         correctness diff=-0.0389 [-0.0722, -0.0056] -- WORSE than Prompt   (tokens 92.9 vs 57.9)
+  Prompt + Multi-Gate (MSE)      correctness diff=+0.1444 [+0.0944, +0.2000] -- BEATS Prompt   (tokens 31.7 vs 57.9)
+  Multi-Gate (NLL) alone         correctness diff=-0.0500 [-0.0833, -0.0167] -- WORSE than Prompt   (tokens 100.9 vs 57.9)
+  Prompt + Multi-Gate (NLL)      correctness diff=+0.2056 [+0.1444, +0.2722] -- BEATS Prompt   (tokens 29.7 vs 57.9)
+
+wrote results/caveman/all_layer_variants_eval.json
+== [2026-09-18 20:05:02] OK: judged evaluation of all 4 configs (alone + combined) vs Base/Prompt ==
+
+################################################################
+# DONE at Fri Sep 18 08:05:02 PM UTC 2026. Completed with no failures.
+# Checkpoints: results/caveman/psr_all_layer_probe_{mse,nll}.pt
+#              results/caveman/psr_multi_gate_probe_{mse,nll}.pt
+# Sweep rows:  results/caveman/psr_{all_layer,multi_gate}_sweep.jsonl
+# Eval table:  results/caveman/all_layer_variants_eval.json
+# Full log:    results/caveman/all_layer_20260918_194842.log
+################################################################

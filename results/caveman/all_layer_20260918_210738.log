@@ -1,0 +1,12 @@
+################################################################
+# A-PSR (all layers) + Multi-Gate ablation -- starting at Fri Sep 18 09:07:38 PM UTC 2026
+# Task: caveman   Log: results/caveman/all_layer_20260918_210738.log
+################################################################
+
+== pre-flight checks ==
+openai.key: found
+CUDA: available
+pre-flight checks passed.
+
+== [2026-09-18 21:07:40] START: A-PSR (trained directions), both loss configs ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!

@@ -57,9 +57,19 @@ def coefficient(gate: GateState, hidden: torch.Tensor, mask: torch.Tensor | None
     return desired_presence * fit, fit
 
 
-def regularization_loss(fit_vals: torch.Tensor, reg_coeff: float) -> torch.Tensor:
+def regularization_loss(fit_vals: torch.Tensor | list[torch.Tensor], reg_coeff: float) -> torch.Tensor:
     """Penalizes the gate for firing NOWHERE across a whole response -- the dead-ReLU guard. Without
-    this, relu(1 - sum(fit)) < 0 gives zero gradient pressure away from an all-zero (do-nothing) gate."""
+    this, relu(1 - sum(fit)) < 0 gives zero gradient pressure away from an all-zero (do-nothing) gate.
+
+    Accepts either a single fit tensor (single-layer PSR) or a LIST of them (A-PSR / Multi-Gate,
+    one per intervention layer), in which case the per-layer penalties are SUMMED -- matching
+    Nokia's reference loop, which adds each intervention module's own regularization_loss into the
+    total (`for layer_output in outputs.intervention_outputs.values(): loss += ...`). Each layer's
+    gate needs its own independent dead-ReLU pressure; averaging instead of summing would let one
+    live gate mask N-1 dead ones, and concatenating the fits into one tensor instead would pool
+    all layers' positions into a single sum, which is a different (weaker) constraint entirely."""
+    if isinstance(fit_vals, (list, tuple)):
+        return sum(regularization_loss(f, reg_coeff) for f in fit_vals)
     fit_sum = fit_vals.sum(dim=1)
     return reg_coeff * torch.relu(1.0 - fit_sum).mean()
 

@@ -1,0 +1,116 @@
+################################################################
+# A-PSR (all layers) + Multi-Gate ablation -- starting at Fri Sep 18 07:42:14 PM UTC 2026
+# Task: caveman   Log: results/caveman/all_layer_20260918_194214.log
+################################################################
+
+== pre-flight checks ==
+openai.key: found
+CUDA: available
+pre-flight checks passed.
+
+== [2026-09-18 19:42:16] START: A-PSR (trained directions), both loss configs ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:15,  4.48it/s]Loading weights:   1%|          | 2/339 [00:00<01:34,  3.57it/s]Loading weights:   5%|▍         | 16/339 [00:00<00:10, 31.04it/s]Loading weights:   9%|▊         | 29/339 [00:00<00:06, 50.90it/s]Loading weights:  12%|█▏        | 39/339 [00:00<00:05, 59.32it/s]Loading weights:  15%|█▌        | 52/339 [00:01<00:03, 72.74it/s]Loading weights:  19%|█▉        | 64/339 [00:01<00:03, 80.10it/s]Loading weights:  22%|██▏       | 76/339 [00:01<00:03, 85.44it/s]Loading weights:  26%|██▋       | 89/339 [00:01<00:02, 91.89it/s]Loading weights:  30%|██▉       | 101/339 [00:01<00:02, 86.44it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.21it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 94.22it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 95.12it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 96.25it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 97.17it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 97.77it/s]Loading weights:  55%|█████▍    | 185/339 [00:02<00:01, 95.55it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 99.07it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 99.12it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 99.01it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 98.46it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 98.67it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 99.02it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 99.06it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 99.08it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 99.11it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 99.09it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 98.98it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 99.05it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 86.78it/s]
+psr_all_layer sweep: 2 loss configs x 28 layers (all layers, no layer sweep -- A-PSR has no layer hyperparameter)
+Traceback (most recent call last):
+  File "/root/INSTRUCTFOLLOWING/src/psr/all_layer/train.py", line 276, in <module>
+    sweep(args.task, args.direction_source, layers, loss_configs, args.seed)
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/src/psr/all_layer/train.py", line 253, in sweep
+    results, _best = run_grid_sweep(grid, train_fn, out_path, key_fields=["mse_weight", "nll_weight"])
+                     ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/core/sweep.py", line 74, in run_grid_sweep
+    result = {**point, **train_fn(point)}
+                         ~~~~~~~~^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/src/psr/all_layer/train.py", line 235, in train_fn
+    result = train_one_config(
+        model, tokenizer, direction_source, layer_indices, seed, n_layers,
+    ...<2 lines>...
+        mse_weight=point["mse_weight"], nll_weight=point["nll_weight"],
+    )
+  File "/root/INSTRUCTFOLLOWING/src/psr/all_layer/train.py", line 140, in train_one_config
+    baseline_metrics, final_metrics = train_gate(
+                                      ~~~~~~~~~~^
+        model, tokenizer, forward_fn, optimizer, 0, n_layers,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/root/INSTRUCTFOLLOWING/steering/psr/training_loop.py", line 79, in train_gate
+    + regularization_loss(fit, reg_coeff)
+      ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/steering/psr/gate.py", line 63, in regularization_loss
+    fit_sum = fit_vals.sum(dim=1)
+              ^^^^^^^^^^^^
+AttributeError: 'list' object has no attribute 'sum'
+== [2026-09-18 19:42:37] FAILED (continuing): A-PSR (trained directions), both loss configs ==
+
+== [2026-09-18 19:42:37] START: Multi-Gate ablation (diff-in-means directions), both loss configs ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<02:58,  1.90it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 11.97it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 35.09it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 52.62it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 65.57it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 75.00it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 81.86it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 86.79it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 90.29it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 92.96it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 94.55it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 95.81it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 96.73it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 97.58it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 97.96it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 97.83it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 97.90it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 98.23it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 98.39it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 98.64it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 98.09it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 97.96it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 98.22it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 98.33it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 98.37it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 98.52it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 98.61it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 98.52it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 98.12it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 86.04it/s]
+psr_multi_gate sweep: 2 loss configs x 28 layers (all layers, no layer sweep -- A-PSR has no layer hyperparameter)
+Traceback (most recent call last):
+  File "/root/INSTRUCTFOLLOWING/src/psr/all_layer/train.py", line 276, in <module>
+    sweep(args.task, args.direction_source, layers, loss_configs, args.seed)
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/src/psr/all_layer/train.py", line 253, in sweep
+    results, _best = run_grid_sweep(grid, train_fn, out_path, key_fields=["mse_weight", "nll_weight"])
+                     ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/core/sweep.py", line 74, in run_grid_sweep
+    result = {**point, **train_fn(point)}
+                         ~~~~~~~~^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/src/psr/all_layer/train.py", line 235, in train_fn
+    result = train_one_config(
+        model, tokenizer, direction_source, layer_indices, seed, n_layers,
+    ...<2 lines>...
+        mse_weight=point["mse_weight"], nll_weight=point["nll_weight"],
+    )
+  File "/root/INSTRUCTFOLLOWING/src/psr/all_layer/train.py", line 140, in train_one_config
+    baseline_metrics, final_metrics = train_gate(
+                                      ~~~~~~~~~~^
+        model, tokenizer, forward_fn, optimizer, 0, n_layers,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/root/INSTRUCTFOLLOWING/steering/psr/training_loop.py", line 79, in train_gate
+    + regularization_loss(fit, reg_coeff)
+      ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/steering/psr/gate.py", line 63, in regularization_loss
+    fit_sum = fit_vals.sum(dim=1)
+              ^^^^^^^^^^^^
+AttributeError: 'list' object has no attribute 'sum'
+== [2026-09-18 19:43:13] FAILED (continuing): Multi-Gate ablation (diff-in-means directions), both loss configs ==
+
+== [2026-09-18 19:43:13] START: judged evaluation of all 4 configs (alone + combined) vs Base/Prompt ==
+Traceback (most recent call last):
+  File "/root/INSTRUCTFOLLOWING/scripts/eval_all_layer_variants.py", line 161, in <module>
+    run(args.task, args.n)
+    ~~~^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/scripts/eval_all_layer_variants.py", line 81, in run
+    raise FileNotFoundError(
+    ...<3 lines>...
+    )
+FileNotFoundError: no all-layer checkpoints found in results/caveman. Run:
+  python3 src/psr/all_layer/train.py --task caveman --direction-source trained --sweep
+  python3 src/psr/all_layer/train.py --task caveman --direction-source diff_in_means --sweep
+== [2026-09-18 19:43:21] FAILED (continuing): judged evaluation of all 4 configs (alone + combined) vs Base/Prompt ==
+
+################################################################
+# DONE at Fri Sep 18 07:43:21 PM UTC 2026 with failures:
+#   - A-PSR (trained directions), both loss configs
+#   - Multi-Gate ablation (diff-in-means directions), both loss configs
+#   - judged evaluation of all 4 configs (alone + combined) vs Base/Prompt
+# Rerun this script -- completed configs are skipped (checkpoints already on disk).
+# Checkpoints: results/caveman/psr_all_layer_probe_{mse,nll}.pt
+#              results/caveman/psr_multi_gate_probe_{mse,nll}.pt
+# Sweep rows:  results/caveman/psr_{all_layer,multi_gate}_sweep.jsonl
+# Eval table:  results/caveman/all_layer_variants_eval.json
+# Full log:    results/caveman/all_layer_20260918_194214.log
+################################################################

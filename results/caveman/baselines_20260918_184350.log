@@ -1,0 +1,60 @@
+################################################################
+# Const + Stolfo-projection baselines -- starting at Fri Sep 18 06:43:50 PM UTC 2026
+# Log: results/caveman/baselines_20260918_184350.log
+################################################################
+
+== pre-flight checks ==
+openai.key: found
+CUDA: available
+pre-flight checks passed.
+
+== [2026-09-18 18:43:56] const ==
+results/caveman/const_tiered_search.jsonl already has a Final result for 'const' -- fully done, skipping. Delete results/caveman/const_tiered_search.jsonl (or just its 'final' row) to force a rerun.
+== [2026-09-18 18:44:12] OK: const ==
+
+== [2026-09-18 18:44:12] stolfo ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]Fetching 4 files:  25%|██▌       | 1/4 [00:18<00:54, 18.13s/it]Fetching 4 files:  50%|█████     | 2/4 [00:43<00:44, 22.25s/it]Fetching 4 files:  75%|███████▌  | 3/4 [00:49<00:14, 14.93s/it]Fetching 4 files: 100%|██████████| 4/4 [01:13<00:00, 18.53s/it]Fetching 4 files: 100%|██████████| 4/4 [01:13<00:00, 18.38s/it]
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:24,  4.00it/s]Loading weights:   1%|          | 2/339 [00:00<01:30,  3.70it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 12.17it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 37.28it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 55.42it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 68.26it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 77.46it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 83.33it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 86.73it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 90.12it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 92.84it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 94.14it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 95.50it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 96.26it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 96.50it/s]Loading weights:  47%|████▋     | 161/339 [00:02<00:01, 94.56it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 97.98it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 97.75it/s]Loading weights:  58%|█████▊    | 197/339 [00:02<00:01, 94.52it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 96.70it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.61it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 97.05it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.87it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.95it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 97.93it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 97.62it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 98.12it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 98.16it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 98.41it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 98.64it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 85.41it/s]
+== Tier 1 (= full grid, no training to prefilter with): 13 candidates, n=20, real judged evaluation ==
+Winner: layer=16 coeff=n/a avg_tokens=67.7
+
+== Final: full-size confirmation run, n=180, TEST split ==
+Final correctness (judged_score, mean 0-2): 1.9667 [1.9389, 1.9889] (95% CI, n=180)
+Final avg_tokens: 59.5  (Prompt alone: 57.8)
+vs. Prompt alone (paired, n=180): diff=0.0167 [-0.0222, 0.0556] -- not significantly different from Prompt alone
+
+Wrote full tiered search log to results/caveman/stolfo_tiered_search.jsonl
+== [2026-09-18 18:48:57] OK: stolfo ==
+
+== cross-variant summary (now includes const/stolfo alongside everything else) ==
+variant               status                                          layer   correctness   conciseness       vs Prompt
+conceptor             done                                               16         1.967         1.000     ties Prompt
+const                 done                                               18         1.928         1.000     ties Prompt
+proper                done                                               14         1.972         1.000     ties Prompt
+stolfo                done                                               16         1.967         1.050     ties Prompt
+
+wrote results/caveman/tiered_search_summary.json
+
+== reproducible cosine similarity matrix ==
+Traceback (most recent call last):
+  File "/root/INSTRUCTFOLLOWING/scripts/compute_cosine_similarities.py", line 147, in <module>
+    main(args.task)
+    ~~~~^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/scripts/compute_cosine_similarities.py", line 90, in main
+    v, src = load_probe_direction(adapter, name, prefer_tiered_winner=False)
+             ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/scripts/compute_cosine_similarities.py", line 54, in load_probe_direction
+    return ckpt["direction"], note
+           ~~~~^^^^^^^^^^^^^
+KeyError: 'direction'
+FAILED: cosine matrix (const/stolfo tiered searches may not have reached Final -- check above)
+
+################################################################
+# DONE at Fri Sep 18 06:49:13 PM UTC 2026 with failures: cosine_matrix -- rerun this script, already-completed
+# variants are skipped (Final already exists), not redone.
+# Results: results/caveman/const_tiered_search.jsonl
+#          results/caveman/stolfo_tiered_search.jsonl
+#          results/caveman/cosine_similarity_matrix.{csv,json}
+# Full log: results/caveman/baselines_20260918_184350.log
+################################################################

@@ -1,0 +1,102 @@
+################################################################
+# Const + Stolfo-projection baselines -- starting at Fri Sep 18 05:59:30 AM UTC 2026
+# Log: results/caveman/baselines_20260918_055930.log
+################################################################
+
+== pre-flight checks ==
+openai.key: found
+CUDA: available
+pre-flight checks passed.
+
+== [2026-09-18 05:59:32] const ==
+results/caveman/const_tiered_search.jsonl already has a Final result for 'const' -- fully done, skipping. Delete results/caveman/const_tiered_search.jsonl (or just its 'final' row) to force a rerun.
+== [2026-09-18 05:59:42] OK: const ==
+
+== [2026-09-18 05:59:42] stolfo ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:03,  1.84it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.66it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 34.21it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:06, 51.31it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 63.75it/s]Loading weights:  16%|█▌        | 53/339 [00:01<00:04, 70.58it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 80.17it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 84.44it/s]Loading weights:  26%|██▋       | 89/339 [00:01<00:02, 85.22it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 90.78it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.12it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 93.43it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 94.04it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 94.79it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 95.33it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.32it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 95.31it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.22it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.79it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.11it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.08it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.40it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.24it/s]Loading weights:  79%|███████▉  | 269/339 [00:03<00:00, 93.65it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.73it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.62it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 96.57it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.51it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.54it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.79it/s]
+== Tier 1 (= full grid, no training to prefilter with): 13 candidates, n=20, real judged evaluation ==
+Traceback (most recent call last):
+  File "/root/INSTRUCTFOLLOWING/evals/layer_hparam_search.py", line 764, in <module>
+    run_training_free_search(args.task, args.variant, args.tier1_n, args.final_n, seed=args.seed, max_batch_rows=args.max_batch_rows)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/evals/layer_hparam_search.py", line 671, in run_training_free_search
+    tier1_results = evaluate_candidates(variant, tier1_candidates, ctx, adapter, eval_adapter, tier1_n, split="dev", max_batch_rows=max_batch_rows)
+  File "/root/INSTRUCTFOLLOWING/evals/layer_hparam_search.py", line 374, in evaluate_candidates
+    prompt_baseline_scores = [d[primary_field] for d in _score_all_concurrently(eval_adapter, rows, prompt_responses)]
+                                                        ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/evals/layer_hparam_search.py", line 285, in _score_all_concurrently
+    return list(pool.map(lambda pair: eval_adapter.score_response(*pair), zip(rows, responses)))
+  File "/usr/lib/python3.13/concurrent/futures/_base.py", line 625, in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/usr/lib/python3.13/concurrent/futures/_base.py", line 318, in _result_or_cancel
+    return fut.result(timeout)
+           ~~~~~~~~~~^^^^^^^^^
+  File "/usr/lib/python3.13/concurrent/futures/_base.py", line 453, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.13/concurrent/futures/_base.py", line 402, in __get_result
+    raise self._exception
+  File "/usr/lib/python3.13/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "/root/INSTRUCTFOLLOWING/evals/layer_hparam_search.py", line 285, in <lambda>
+    return list(pool.map(lambda pair: eval_adapter.score_response(*pair), zip(rows, responses)))
+                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/evals/caveman/judge.py", line 115, in score_response
+    correctness_score = _call_judge_json(client, JUDGE_MODEL, correctness_prompt)
+  File "/root/INSTRUCTFOLLOWING/evals/caveman/judge.py", line 95, in _call_judge_json
+    resp = client.chat.completions.create(
+        model=model, max_tokens=max_tokens, temperature=0,
+        messages=[{"role": "user", "content": prompt}],
+    )
+  File "/usr/local/lib/python3.13/dist-packages/openai/_utils/_utils.py", line 298, in wrapper
+    return func(*args, **kwargs)
+  File "/usr/local/lib/python3.13/dist-packages/openai/resources/chat/completions/completions.py", line 1296, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^
+    ...<53 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/dist-packages/openai/_base_client.py", line 1375, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/dist-packages/openai/_base_client.py", line 1148, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.RateLimitError: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-4o-mini in organization org-sn5jcIVaDXmlcAW8nnl12VEb on requests per day (RPD): Limit 10000, Used 10000, Requested 1. Please try again in 8.64s. Visit https://platform.openai.com/account/rate-limits to learn more.', 'type': 'requests', 'param': None, 'code': 'rate_limit_exceeded'}}
+== [2026-09-18 06:02:16] FAILED: stolfo (continuing) ==
+
+== cross-variant summary (now includes const/stolfo alongside everything else) ==
+variant               status                                          layer   correctness   conciseness       vs Prompt
+conceptor             done                                               16         1.967         1.000     ties Prompt
+const                 done                                               18         1.928         1.000     ties Prompt
+proper                done                                               14         1.972         1.000     ties Prompt
+
+wrote results/caveman/tiered_search_summary.json
+
+== reproducible cosine similarity matrix ==
+Traceback (most recent call last):
+  File "/root/INSTRUCTFOLLOWING/scripts/compute_cosine_similarities.py", line 147, in <module>
+    main(args.task)
+    ~~~~^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/scripts/compute_cosine_similarities.py", line 90, in main
+    v, src = load_probe_direction(adapter, name, prefer_tiered_winner=False)
+             ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/scripts/compute_cosine_similarities.py", line 54, in load_probe_direction
+    return ckpt["direction"], note
+           ~~~~^^^^^^^^^^^^^
+KeyError: 'direction'
+FAILED: cosine matrix (const/stolfo tiered searches may not have reached Final -- check above)
+
+################################################################
+# DONE at Fri Sep 18 06:02:33 AM UTC 2026 with failures: stolfo cosine_matrix -- rerun this script, already-completed
+# variants are skipped (Final already exists), not redone.
+# Results: results/caveman/const_tiered_search.jsonl
+#          results/caveman/stolfo_tiered_search.jsonl
+#          results/caveman/cosine_similarity_matrix.{csv,json}
+# Full log: results/caveman/baselines_20260918_055930.log
+################################################################

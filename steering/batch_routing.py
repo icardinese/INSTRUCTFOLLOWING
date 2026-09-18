@@ -66,6 +66,60 @@ def left_pad_batch(tokenizer, prompts: list[str]) -> tuple[torch.Tensor, torch.T
     return enc["input_ids"], enc["attention_mask"]
 
 
+def generate_batched_uniform(
+    model,
+    tokenizer,
+    prompts: list[str],
+    hooks: dict[int, Callable] | None = None,
+    max_new_tokens: int = 150,
+    max_batch_rows: int = 60,
+) -> list[str]:
+    """Batched generation where EVERY row gets the SAME intervention (or none). Complements
+    generate_with_routed_configs, which exists for the opposite case -- different configs on
+    different rows of one batch, one layer per group.
+
+    This is what multi-layer methods (A-PSR / Multi-Gate) need: those hook ALL layers for every
+    row, so `layer_by_group`'s one-layer-per-group model doesn't apply, and no routing is needed
+    at all since there's nothing to distinguish rows by. Passing hooks=None generates unsteered
+    (Base/Prompt baselines), so a caller can use one code path for every condition.
+
+    Chunked at max_batch_rows for the same reason evals/layer_hparam_search.py's
+    _chunk_groups_by_row_budget exists: an unbounded batch hit a real CUDA OOM on an 80GB A100.
+
+    Returns responses in the SAME order as `prompts`.
+    """
+    from steering.hooks import multi_steering_hook  # local import: avoids a hooks<->batch_routing cycle
+
+    responses: list[str] = []
+    for start in range(0, len(prompts), max_batch_rows):
+        chunk = prompts[start: start + max_batch_rows]
+        input_ids, attention_mask = left_pad_batch(tokenizer, chunk)
+        input_ids, attention_mask = input_ids.to(model.device), attention_mask.to(model.device)
+
+        def _do_generate():
+            return model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+                pad_token_id=tokenizer.eos_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+            )
+
+        if hooks:
+            with multi_steering_hook(model, hooks):
+                output_ids = _do_generate()
+        else:
+            output_ids = _do_generate()
+
+        prompt_len = input_ids.shape[1]
+        responses.extend(
+            tokenizer.decode(output_ids[r, prompt_len:], skip_special_tokens=True).strip()
+            for r in range(len(chunk))
+        )
+    return responses
+
+
 def generate_with_routed_configs(
     model,
     tokenizer,

@@ -1,0 +1,50 @@
+################################################################
+# A-PSR (all layers) + Multi-Gate ablation -- starting at Fri Sep 18 07:32:50 PM UTC 2026
+# Task: caveman   Log: results/caveman/all_layer_20260918_193250.log
+################################################################
+
+== pre-flight checks ==
+openai.key: found
+CUDA: available
+pre-flight checks passed.
+
+== [2026-09-18 19:32:52] START: A-PSR (trained directions), both loss configs ==
+Traceback (most recent call last):
+  File "/root/INSTRUCTFOLLOWING/src/psr/all_layer/train.py", line 50, in <module>
+    from core.seed import set_seed
+ModuleNotFoundError: No module named 'core.seed'
+== [2026-09-18 19:32:59] FAILED (continuing): A-PSR (trained directions), both loss configs ==
+
+== [2026-09-18 19:32:59] START: Multi-Gate ablation (diff-in-means directions), both loss configs ==
+Traceback (most recent call last):
+  File "/root/INSTRUCTFOLLOWING/src/psr/all_layer/train.py", line 50, in <module>
+    from core.seed import set_seed
+ModuleNotFoundError: No module named 'core.seed'
+== [2026-09-18 19:33:07] FAILED (continuing): Multi-Gate ablation (diff-in-means directions), both loss configs ==
+
+== [2026-09-18 19:33:07] START: judged evaluation of all 4 configs (alone + combined) vs Base/Prompt ==
+Traceback (most recent call last):
+  File "/root/INSTRUCTFOLLOWING/scripts/eval_all_layer_variants.py", line 161, in <module>
+    run(args.task, args.n)
+    ~~~^^^^^^^^^^^^^^^^^^^
+  File "/root/INSTRUCTFOLLOWING/scripts/eval_all_layer_variants.py", line 81, in run
+    raise FileNotFoundError(
+    ...<3 lines>...
+    )
+FileNotFoundError: no all-layer checkpoints found in results/caveman. Run:
+  python3 src/psr/all_layer/train.py --task caveman --direction-source trained --sweep
+  python3 src/psr/all_layer/train.py --task caveman --direction-source diff_in_means --sweep
+== [2026-09-18 19:33:15] FAILED (continuing): judged evaluation of all 4 configs (alone + combined) vs Base/Prompt ==
+
+################################################################
+# DONE at Fri Sep 18 07:33:15 PM UTC 2026 with failures:
+#   - A-PSR (trained directions), both loss configs
+#   - Multi-Gate ablation (diff-in-means directions), both loss configs
+#   - judged evaluation of all 4 configs (alone + combined) vs Base/Prompt
+# Rerun this script -- completed configs are skipped (checkpoints already on disk).
+# Checkpoints: results/caveman/psr_all_layer_probe_{mse,nll}.pt
+#              results/caveman/psr_multi_gate_probe_{mse,nll}.pt
+# Sweep rows:  results/caveman/psr_{all_layer,multi_gate}_sweep.jsonl
+# Eval table:  results/caveman/all_layer_variants_eval.json
+# Full log:    results/caveman/all_layer_20260918_193250.log
+################################################################

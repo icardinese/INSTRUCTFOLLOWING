@@ -1,0 +1,783 @@
+diff --git a/infra/run_all_layer_overnight.sh b/infra/run_all_layer_overnight.sh
+new file mode 100755
+index 0000000..eca618a
+--- /dev/null
++++ b/infra/run_all_layer_overnight.sh
+@@ -0,0 +1,77 @@
++#!/usr/bin/env bash
++# A-PSR (faithful, ALL layers) + its Multi-Gate ablation, both loss objectives, then judged eval.
++#
++# 4 training runs total (2 variants x 2 loss configs) -- NO layer sweep, because A-PSR has no layer
++# hyperparameter (all layers, definitionally). That makes this far cheaper than proper's 65-point
++# sweep. Each variant's sweep() is resumable and checkpoints per loss config, so a crash partway
++# only costs the in-flight config.
++#
++#   tmux new -s all_layer   # then inside: bash infra/run_all_layer_overnight.sh
++set -uo pipefail
++
++REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
++export PYTHONPATH="$REPO_ROOT:$REPO_ROOT/src:${PYTHONPATH:-}"
++cd "$REPO_ROOT"
++
++TASK="${TASK:-caveman}"
++RESULTS_DIR="results/$TASK"
++TIMESTAMP="$(date '+%Y%m%d_%H%M%S')"
++LOG_FILE="$RESULTS_DIR/all_layer_${TIMESTAMP}.log"
++mkdir -p "$RESULTS_DIR"
++exec > >(tee -a "$LOG_FILE") 2>&1
++
++EVAL_N="${EVAL_N:-180}"
++
++echo "################################################################"
++echo "# A-PSR (all layers) + Multi-Gate ablation -- starting at $(date)"
++echo "# Task: $TASK   Log: $LOG_FILE"
++echo "################################################################"
++
++echo ""
++echo "== pre-flight checks =="
++PREFLIGHT_OK=1
++[ -f "openai.key" ] && echo "openai.key: found" || { echo "PRE-FLIGHT FAILURE: openai.key missing"; PREFLIGHT_OK=0; }
++python3 -c "import torch; assert torch.cuda.is_available()" 2>/dev/null && echo "CUDA: available" || { echo "PRE-FLIGHT FAILURE: no CUDA"; PREFLIGHT_OK=0; }
++[ "$PREFLIGHT_OK" = "1" ] || { echo ""; echo "Aborting before touching GPU/API."; exit 1; }
++echo "pre-flight checks passed."
++
++FAILURES=()
++run_step() {
++    local desc="$1"; shift
++    echo ""
++    echo "== [$(date '+%Y-%m-%d %H:%M:%S')] START: $desc =="
++    if "$@"; then
++        echo "== [$(date '+%Y-%m-%d %H:%M:%S')] OK: $desc =="
++    else
++        echo "== [$(date '+%Y-%m-%d %H:%M:%S')] FAILED (continuing): $desc =="
++        FAILURES+=("$desc")
++    fi
++}
++
++# --direction-source trained     = A-PSR, gradient-trained directions (faithful H&V)
++# --direction-source diff_in_means = Multi-Gate ablation, fixed DiM directions
++# Omitting --layers is deliberate and load-bearing: that's what selects ALL layers.
++run_step "A-PSR (trained directions), both loss configs" \
++    python3 -u src/psr/all_layer/train.py --task "$TASK" --direction-source trained --sweep
++
++run_step "Multi-Gate ablation (diff-in-means directions), both loss configs" \
++    python3 -u src/psr/all_layer/train.py --task "$TASK" --direction-source diff_in_means --sweep
++
++run_step "judged evaluation of all 4 configs (alone + combined) vs Base/Prompt" \
++    python3 -u scripts/eval_all_layer_variants.py --task "$TASK" --n "$EVAL_N"
++
++echo ""
++echo "################################################################"
++if [ "${#FAILURES[@]}" -eq 0 ]; then
++    echo "# DONE at $(date). Completed with no failures."
++else
++    echo "# DONE at $(date) with failures:"
++    for f in "${FAILURES[@]}"; do echo "#   - $f"; done
++    echo "# Rerun this script -- completed configs are skipped (checkpoints already on disk)."
++fi
++echo "# Checkpoints: $RESULTS_DIR/psr_all_layer_probe_{mse,nll}.pt"
++echo "#              $RESULTS_DIR/psr_multi_gate_probe_{mse,nll}.pt"
++echo "# Sweep rows:  $RESULTS_DIR/psr_{all_layer,multi_gate}_sweep.jsonl"
++echo "# Eval table:  $RESULTS_DIR/all_layer_variants_eval.json"
++echo "# Full log:    $LOG_FILE"
++echo "################################################################"
+diff --git a/scripts/eval_all_layer_variants.py b/scripts/eval_all_layer_variants.py
+new file mode 100644
+index 0000000..b69dbb4
+--- /dev/null
++++ b/scripts/eval_all_layer_variants.py
+@@ -0,0 +1,161 @@
++"""Judged evaluation of every all-layer checkpoint: A-PSR (trained directions) and Multi-Gate
++(fixed diff-in-means), each under pure MSE and pure NLL -- 4 configs -- plus Base and Prompt
++baselines, in both the alone (steering only) and combined (Prompt+Steer) conditions.
++
++Why this is a standalone script rather than a --variant in evals/layer_hparam_search.py: that
++module's entire structure is layer/hyperparameter SELECTION (Tier 1 narrows layers, Tier 2 narrows
++hyperparameters, Final confirms one winner). A-PSR has no layer hyperparameter to select -- "all
++layers" is definitional -- and only 2 loss configs, both of which are real experiments H&V report
++separately rather than candidates to prune. So there is nothing to search: just load each
++checkpoint and evaluate it at full n. Forcing that through the tiered-search machinery would mean
++inventing a selection problem that doesn't exist.
++
++Baselines are generated ONCE on the same rows and reused across all 4 configs (they don't depend
++on any checkpoint), so this is 4 steered conditions x 2 prompt types + 2 baselines, all paired to
++the same examples -- valid for the paired bootstrap comparisons at the bottom.
++"""
++import argparse
++import json
++import sys
++from pathlib import Path
++
++import torch
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++from adapters.registry import get_adapter
++from core.model_common import load_model, token_count
++from evals.bootstrap_analysis import bootstrap_ci, paired_bootstrap_diff
++from evals.layer_hparam_search import _score_all_concurrently
++from evals.registry import get_eval_adapter
++from steering.batch_routing import generate_batched_uniform
++from steering.psr.gate import GateState
++from steering.psr.multi_gate import make_multi_inference_hooks
++
++DEFAULT_N = 180
++MAX_BATCH_ROWS = 60  # same budget evals/layer_hparam_search.py uses -- an unbounded batch hit a
++# real CUDA OOM on an 80GB A100. Lower it if a bigger model OOMs here.
++
++# (checkpoint stem, human label). Both variants, both objectives.
++CONFIGS = [
++    ("psr_all_layer_probe_mse", "A-PSR (MSE)"),
++    ("psr_all_layer_probe_nll", "A-PSR (NLL)"),
++    ("psr_multi_gate_probe_mse", "Multi-Gate (MSE)"),
++    ("psr_multi_gate_probe_nll", "Multi-Gate (NLL)"),
++]
++
++
++def _mean(values) -> float:
++    return sum(values) / len(values)
++
++
++def load_multi_checkpoint(path: Path, device: str):
++    """Returns (gates, directions, layer_indices, meta) from an all-layer checkpoint written by
++    src/psr/all_layer/train.py's _save_checkpoint."""
++    ckpt = torch.load(path, map_location=device)
++    layer_indices = ckpt["layer_indices"]
++    gates = {
++        l: GateState(
++            weight=ckpt["gates"][l]["weight"].to(device),
++            bias=ckpt["gates"][l]["bias"].to(device),
++            coeff_bias=ckpt["gates"][l]["coeff_bias"].to(device),
++        )
++        for l in layer_indices
++    }
++    directions = {l: ckpt["directions"][l].to(device) for l in layer_indices}
++    meta = {
++        "direction_source": ckpt.get("direction_source"),
++        "mse_weight": ckpt.get("mse_weight"), "nll_weight": ckpt.get("nll_weight"),
++        "n_layers_hooked": len(layer_indices),
++    }
++    return gates, directions, layer_indices, meta
++
++
++def run(task: str, n: int, device: str = "cuda") -> None:
++    adapter = get_adapter(task)
++    eval_adapter = get_eval_adapter(task)
++    primary_field = eval_adapter.SCORE_FIELDS[0]
++
++    available = [(stem, label) for stem, label in CONFIGS if (adapter.RESULTS_DIR / f"{stem}.pt").exists()]
++    if not available:
++        raise FileNotFoundError(
++            f"no all-layer checkpoints found in {adapter.RESULTS_DIR}. Run:\n"
++            f"  python3 src/psr/all_layer/train.py --task {task} --direction-source trained --sweep\n"
++            f"  python3 src/psr/all_layer/train.py --task {task} --direction-source diff_in_means --sweep"
++        )
++    available_stems = {stem for stem, _ in available}
++    missing = [stem for stem, _ in CONFIGS if stem not in available_stems]
++    if missing:
++        print(f"NOTE: evaluating {len(available)}/{len(CONFIGS)} configs -- missing checkpoints: {missing}")
++
++    model, tokenizer = load_model(device, model_name=adapter.MODEL_NAME)
++    for p in model.parameters():
++        p.requires_grad_(False)
++
++    test_rows = adapter.load_rows("test")[:n]
++    test_items = adapter.to_items(tokenizer, test_rows)
++    base_prompts = [it["base_prompt"] for it in test_items]
++    terse_prompts = [it["terse_prompt"] for it in test_items]
++
++    print(f"\ngenerating Base and Prompt baselines once (n={n}, shared across all configs) ...")
++    with torch.no_grad():
++        base_responses = generate_batched_uniform(model, tokenizer, base_prompts, hooks=None, max_batch_rows=MAX_BATCH_ROWS)
++        prompt_responses = generate_batched_uniform(model, tokenizer, terse_prompts, hooks=None, max_batch_rows=MAX_BATCH_ROWS)
++
++    def score(responses):
++        # _score_all_concurrently, NOT a list comprehension: score_response is 2 blocking OpenAI
++        # calls per response, and this script scores 10 conditions x n responses. Sequentially that
++        # is the dominant cost of the whole run (the exact bottleneck that made Const's Tier 1 take
++        # ~3h before evals/layer_hparam_search.py got this same fix).
++        dicts = _score_all_concurrently(eval_adapter, test_rows, responses)
++        return {
++            "scores": [d[primary_field] for d in dicts],
++            "coherent_rate": _mean([1.0 if d["coherent"] else 0.0 for d in dicts]),
++            "avg_tokens": _mean([token_count(tokenizer, r) for r in responses]),
++        }
++
++    results = {"base": score(base_responses), "prompt": score(prompt_responses)}
++
++    for stem, label in available:
++        print(f"\n== {label} ==")
++        gates, directions, layer_indices, meta = load_multi_checkpoint(adapter.RESULTS_DIR / f"{stem}.pt", device)
++        print(f"   {meta['n_layers_hooked']} layers hooked, direction_source={meta['direction_source']}")
++        hooks = make_multi_inference_hooks(gates, directions, layer_indices)
++        with torch.no_grad():
++            alone = generate_batched_uniform(model, tokenizer, base_prompts, hooks=hooks, max_batch_rows=MAX_BATCH_ROWS)
++            combined = generate_batched_uniform(model, tokenizer, terse_prompts, hooks=hooks, max_batch_rows=MAX_BATCH_ROWS)
++        results[f"{stem}_alone"] = {**score(alone), "label": f"{label} alone", "meta": meta}
++        results[f"{stem}_combined"] = {**score(combined), "label": f"Prompt + {label}", "meta": meta}
++
++    print(f"\n{'condition':<30}{'avg_tokens':>12}{'correct':>10}{'coherent':>11}")
++    print("-" * 63)
++    for key in ("base", "prompt"):
++        pt, _, _ = bootstrap_ci(results[key]["scores"])
++        print(f"{key:<30}{results[key]['avg_tokens']:>12.1f}{pt:>10.3f}{results[key]['coherent_rate']:>11.2f}")
++    for stem, _label in available:
++        for suffix in ("alone", "combined"):
++            r = results[f"{stem}_{suffix}"]
++            pt, _, _ = bootstrap_ci(r["scores"])
++            print(f"{r['label']:<30}{r['avg_tokens']:>12.1f}{pt:>10.3f}{r['coherent_rate']:>11.2f}")
++
++    print(f"\n== paired vs Prompt alone (n={n}) ==")
++    for stem, _label in available:
++        for suffix in ("alone", "combined"):
++            r = results[f"{stem}_{suffix}"]
++            diff, lo, hi = paired_bootstrap_diff(results["prompt"]["scores"], r["scores"])
++            verdict = "BEATS Prompt" if lo > 0 else "WORSE than Prompt" if hi < 0 else "ties Prompt"
++            print(f"  {r['label']:<30} correctness diff={diff:+.4f} [{lo:+.4f}, {hi:+.4f}] -- {verdict}"
++                  f"   (tokens {r['avg_tokens']:.1f} vs {results['prompt']['avg_tokens']:.1f})")
++
++    out_path = adapter.RESULTS_DIR / "all_layer_variants_eval.json"
++    with out_path.open("w") as f:
++        json.dump({"task": task, "n": n, "results": results}, f, indent=2)
++    print(f"\nwrote {out_path}")
++
++
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--task", default="caveman", choices=["caveman", "ifeval"])
++    parser.add_argument("--n", type=int, default=DEFAULT_N)
++    args = parser.parse_args()
++    run(args.task, args.n)
+diff --git a/src/psr/all_layer/train.py b/src/psr/all_layer/train.py
+new file mode 100644
+index 0000000..14e17fc
+--- /dev/null
++++ b/src/psr/all_layer/train.py
+@@ -0,0 +1,278 @@
++"""A-PSR: Heyman & Vandeputte's all-layer Prompt Steering Replacement, plus its Multi-Gate
++ablation, on ONE shared code path.
++
++Both variants are this same script, selected by --direction-source:
++
++  trained        A-PSR, faithful. N gates + N gradient-trained directions at every layer, jointly
++                 optimized in one shared forward pass, one backward, one optimizer.
++  diff_in_means  "Multi-Gate" ablation. Identical in every respect EXCEPT the directions are fixed
++                 diff-in-means vectors (requires_grad=False, absent from the optimizer). Isolates
++                 exactly one variable: does A-PSR's advantage come from gradient-training the
++                 directions, or from having a trained per-token gate at every layer? This is the
++                 multi-layer analogue of the single-layer proper-vs-fixed-direction comparison.
++
++Deliberately ONE script with a flag rather than two near-duplicate files: the two variants must
++stay byte-identical in their training loop, layer set, epochs, LR, regularization, masking and
++loss, or the ablation proves nothing. A flag makes that structural; two files make it a promise
++someone has to keep by hand every time the code changes (and this codebase is about to be run
++across multiple models, where that drift would be invisible).
++
++ALL LAYERS, faithfully. Nokia's A-PSR config is `layers=list(range(num_layers))` -- literally every
++layer (28 for Qwen2.5-Coder-7B), not a subset and not a fractional grid. That is the default here.
++--layers exists only for cheaper debugging runs; using it makes the result NOT A-PSR, and the
++chosen layer set is recorded in both the sweep row and the checkpoint so that can never be
++silently misreported later.
++
++NO LAYER SWEEP EXISTS FOR THIS METHOD. A-PSR has no layer hyperparameter -- "which layer" is
++answered by "all of them" definitionally. So sweep() here is a 2-point grid over loss configs only
++(pure MSE = H&V's _MSE, pure NLL = their _LL), not the (layer x hyperparameter) grid the
++single-layer variants need. This makes A-PSR dramatically CHEAPER than proper's 65-point sweep,
++not more expensive.
++
++MSE IS OVER ALL LAYERS. subsequent_layers_mse is called with layer_idx=0, which covers
++hidden_states indices 1..n_layers -- i.e. every layer's output. That matches Nokia's
++LossSpecification(layers_to_imitate="all") and is the right choice regardless of --layers, since
++the earliest intervention is at or after layer 0 in every case.
++"""
++import argparse
++import json
++import os
++import sys
++from pathlib import Path
++
++import torch
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
++
++from adapters.registry import get_adapter
++from core.generation_cache import load_or_compute_responses
++from core.model_common import generate_response, load_model, num_layers
++from core.seed import set_seed
++from core.sweep import run_grid_sweep
++from steering.psr.data import load_or_pool_prompt_last_token_all_layers
++from steering.psr.gate import init_gate_state
++from steering.psr.multi_gate import forward_with_multi_gate_hook
++from steering.psr.proper.direction import init_direction
++from steering.psr.training_loop import train_gate
++
++N_EPOCHS = 3
++LR = float(os.environ.get("PSR_ALL_LAYER_LR", 1e-3))
++WEIGHT_DECAY = 1e-4
++REG_COEFF = float(os.environ.get("PSR_ALL_LAYER_REG_COEFF", 0.1))
++MSE_WEIGHT = float(os.environ.get("PSR_ALL_LAYER_MSE_WEIGHT", 1.0))
++NLL_WEIGHT = float(os.environ.get("PSR_ALL_LAYER_NLL_WEIGHT", 0.0))
++
++DIRECTION_SOURCES = ("trained", "diff_in_means")
++
++# Same two endpoints as every other variant post-2026-09-17 (see src/psr/proper/train.py for the
++# full reasoning): H&V train MSE and LL as mutually-exclusive alternatives, never blended.
++DEFAULT_LOSS_CONFIG_GRID = [
++    {"mse_weight": 1.0, "nll_weight": 0.0},   # pure MSE (H&V's "_MSE" variant)
++    {"mse_weight": 0.0, "nll_weight": 1.0},   # pure NLL (H&V's "_LL" variant)
++]
++
++
++def build_directions(
++    direction_source: str, layer_indices: list[int], hidden_size: int, device: str,
++    model=None, tokenizer=None, train_items=None, n_layers=None, cache_dir=None,
++) -> tuple[dict[int, torch.Tensor], list[torch.Tensor]]:
++    """Returns (directions, trainable_params). trainable_params is [] for diff_in_means -- that
++    emptiness IS the ablation, and it's what keeps the directions out of the optimizer without the
++    caller needing a second flag.
++
++    diff_in_means uses the PROMPT's last-token representation (base vs. instructed), matching what
++    Const, Stolfo and the fixed-vector conceptor all use in this codebase as of 2026-09-17. The
++    alternative (response-token-pooled) was this project's earlier default and measured clearly
++    worse for conceptor; using the better extraction makes this a fair ablation of the DIRECTION
++    SOURCE rather than a rerun of the already-settled extraction-point question.
++    """
++    if direction_source == "trained":
++        directions = {l: init_direction(hidden_size, device) for l in layer_indices}
++        return directions, list(directions.values())
++
++    if direction_source == "diff_in_means":
++        base_by_layer, instr_by_layer = load_or_pool_prompt_last_token_all_layers(
++            model, tokenizer, train_items, n_layers, cache_dir
++        )
++        directions = {}
++        for l in layer_indices:
++            diff = instr_by_layer[l].to(device).mean(0) - base_by_layer[l].to(device).mean(0)
++            # Unit-normalized so the gate's learned coefficient is the ONLY thing setting
++            # magnitude -- otherwise each layer's raw diff norm silently rescales its own gate,
++            # and per-layer magnitudes differ a lot across depth.
++            directions[l] = (diff / diff.norm()).detach().requires_grad_(False)
++        return directions, []
++
++    raise ValueError(f"unknown direction_source {direction_source!r}, expected one of {DIRECTION_SOURCES}")
++
++
++def train_one_config(
++    model, tokenizer, direction_source: str, layer_indices: list[int], seed: int,
++    n_layers: int, hidden_size: int, device: str,
++    train_items: list[dict], dev_items: list[dict], train_responses: dict, dev_responses: dict,
++    cache_dir, lr: float = LR, weight_decay: float = WEIGHT_DECAY, reg_coeff: float = REG_COEFF,
++    n_epochs: int = N_EPOCHS, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
++    on_epoch_end=None,
++) -> dict:
++    """Trains N gates (+ N directions, if direction_source == "trained") jointly. Mirrors
++    src/psr/proper/train.py's train_one_config contract: scalar dev metrics AND the trained tensors
++    in one dict, callers pick out what they need."""
++    set_seed(seed)
++    gates = {l: init_gate_state(hidden_size, device) for l in layer_indices}
++    directions, direction_params = build_directions(
++        direction_source, layer_indices, hidden_size, device,
++        model=model, tokenizer=tokenizer, train_items=train_items,
++        n_layers=n_layers, cache_dir=cache_dir,
++    )
++
++    # ONE optimizer over every layer's parameters -> one joint update step. This, plus one
++    # backward in train_gate, is what makes the interventions genuinely simultaneous rather than
++    # N independent single-layer trainings (the flaw in the old mislabeled "A-PSR").
++    gate_params = [p for l in layer_indices for p in gates[l].parameters()]
++    optimizer = torch.optim.Adam(gate_params + direction_params, lr=lr, weight_decay=weight_decay)
++
++    forward_fn = lambda pair: forward_with_multi_gate_hook(
++        model, gates, directions, layer_indices, pair["full_base"], pair["n_resp"]
++    )
++
++    wrapped_on_epoch_end = (lambda epoch, metrics: on_epoch_end(epoch, gates, directions, metrics)) if on_epoch_end else None
++    # layer_idx=0 -> MSE over ALL layers (see module docstring).
++    baseline_metrics, final_metrics = train_gate(
++        model, tokenizer, forward_fn, optimizer, 0, n_layers,
++        train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
++        mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
++    )
++    return {
++        "baseline_mse": baseline_metrics["mse"], "baseline_nll": baseline_metrics["nll"],
++        "final_mse": final_metrics["mse"], "final_nll": final_metrics["nll"],
++        "gates": {l: {"weight": gates[l].weight.detach().cpu(), "bias": gates[l].bias.detach().cpu(),
++                       "coeff_bias": gates[l].coeff_bias.detach().cpu()} for l in layer_indices},
++        "directions": {l: directions[l].detach().cpu() for l in layer_indices},
++    }
++
++
++def _save_checkpoint(out_path, result: dict, direction_source: str, layer_indices: list[int],
++                      task: str, mse_weight: float, nll_weight: float) -> None:
++    torch.save({
++        "gates": result["gates"], "directions": result["directions"],
++        "layer_indices": layer_indices, "direction_source": direction_source,
++        "task": task, "mse_weight": mse_weight, "nll_weight": nll_weight,
++        "completed_epochs": N_EPOCHS,
++    }, out_path)
++
++
++def _setup(task: str, device: str):
++    adapter = get_adapter(task)
++    adapter.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
++    adapter.CACHE_DIR.mkdir(parents=True, exist_ok=True)
++    model, tokenizer = load_model(device, model_name=adapter.MODEL_NAME)
++    for p in model.parameters():
++        p.requires_grad_(False)
++    n_layers = num_layers(model)
++    train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
++    dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    return adapter, model, tokenizer, n_layers, train_items, dev_items, train_responses, dev_responses
++
++
++def _variant_tag(direction_source: str) -> str:
++    """File-naming stem. Kept as a function so the two variants' artifact names are derived in
++    exactly one place rather than formatted ad hoc at each call site."""
++    return "psr_all_layer" if direction_source == "trained" else "psr_multi_gate"
++
++
++def main(task: str, direction_source: str, layers: list[int] | None, seed: int = 42, device: str = "cuda") -> None:
++    out_tag = os.environ.get("PSR_ALL_LAYER_OUT_TAG", "")
++    adapter, model, tokenizer, n_layers, train_items, dev_items, train_responses, dev_responses = _setup(task, device)
++    out_path = adapter.RESULTS_DIR / f"{_variant_tag(direction_source)}_probe{out_tag}.pt"
++    if out_path.exists() and os.environ.get("FORCE_RERUN", "0") != "1":
++        print(f">>> {out_path} already exists, skipping")
++        return
++
++    layer_indices = layers if layers is not None else list(range(n_layers))
++    print(f"{_variant_tag(direction_source)}: {len(layer_indices)} layers, direction_source={direction_source}, "
++          f"mse_weight={MSE_WEIGHT}, nll_weight={NLL_WEIGHT}")
++    result = train_one_config(
++        model, tokenizer, direction_source, layer_indices, seed, n_layers, model.config.hidden_size,
++        device, train_items, dev_items, train_responses, dev_responses, adapter.CACHE_DIR,
++        mse_weight=MSE_WEIGHT, nll_weight=NLL_WEIGHT,
++    )
++    _save_checkpoint(out_path, result, direction_source, layer_indices, task, MSE_WEIGHT, NLL_WEIGHT)
++    print(f"task={task} layers={len(layer_indices)} baseline_dev_mse={result['baseline_mse']:.4f} "
++          f"final_dev_mse={result['final_mse']:.4f}")
++    print(f"wrote {out_path}")
++
++
++def sweep(task: str, direction_source: str, layers: list[int] | None = None,
++          loss_config_grid: list[dict] | None = None, seed: int = 42, device: str = "cuda") -> None:
++    """2-point grid over loss configs only -- A-PSR has no layer hyperparameter (see module
++    docstring). Resumable via core.sweep.run_grid_sweep, same as every other variant.
++
++    Saves a SEPARATE checkpoint per loss config (..._probe_mse.pt, ..._probe_nll.pt) rather than
++    one "winner". run_grid_sweep selects best by lowest final_mse, which would pick pure MSE every
++    single time by construction -- a pure-NLL run optimizes a different objective and lands at a
++    much higher MSE (real measurement on the single-layer variant: 25.5 vs 5.7), so "lowest
++    final_mse" is not a meaningful comparison ACROSS objectives, only within one. Both objectives
++    are real experiments H&V report separately (_MSE and _LL), and which one actually produces
++    better generations is a question for judged evaluation, not training loss. So: keep both.
++    """
++    loss_config_grid = loss_config_grid if loss_config_grid is not None else DEFAULT_LOSS_CONFIG_GRID
++    adapter, model, tokenizer, n_layers, train_items, dev_items, train_responses, dev_responses = _setup(task, device)
++    layer_indices = layers if layers is not None else list(range(n_layers))
++    tag = _variant_tag(direction_source)
++    print(f"{tag} sweep: {len(loss_config_grid)} loss configs x {len(layer_indices)} layers "
++          f"(all layers, no layer sweep -- A-PSR has no layer hyperparameter)")
++
++    def _config_suffix(mse_weight: float, nll_weight: float) -> str:
++        if mse_weight > 0 and nll_weight == 0:
++            return "_mse"
++        if mse_weight == 0 and nll_weight > 0:
++            return "_nll"
++        return f"_mse{mse_weight}_nll{nll_weight}"
++
++    def train_fn(point: dict) -> dict:
++        result = train_one_config(
++            model, tokenizer, direction_source, layer_indices, seed, n_layers,
++            model.config.hidden_size, device, train_items, dev_items, train_responses,
++            dev_responses, adapter.CACHE_DIR,
++            mse_weight=point["mse_weight"], nll_weight=point["nll_weight"],
++        )
++        # Checkpoint immediately, inside train_fn, so a resumed sweep never has to retrain a
++        # completed point just to recover its tensors (the failure mode src/psr/proper/train.py's
++        # sweep() has to work around with a retrain-the-winner branch).
++        probe_path = adapter.RESULTS_DIR / f"{tag}_probe{_config_suffix(point['mse_weight'], point['nll_weight'])}.pt"
++        _save_checkpoint(probe_path, result, direction_source, layer_indices, task,
++                          point["mse_weight"], point["nll_weight"])
++        print(f"{tag} mse_weight={point['mse_weight']} nll_weight={point['nll_weight']} "
++              f"final_mse={result['final_mse']:.4f} final_nll={result['final_nll']:.4f} -> {probe_path.name}")
++        return {k: v for k, v in result.items() if k not in ("gates", "directions")}
++
++    grid = [{"n_layers_hooked": len(layer_indices), **cfg} for cfg in loss_config_grid]
++    out_path = adapter.RESULTS_DIR / f"{tag}_sweep.jsonl"
++    results, _best = run_grid_sweep(grid, train_fn, out_path, key_fields=["mse_weight", "nll_weight"])
++    print(f"\nwrote {len(results)} sweep rows to {out_path}")
++    print(f"checkpoints saved per loss config -- compare them by JUDGED evaluation "
++          f"(scripts/eval_all_layer_variants.py), not by final_mse across different objectives")
++
++
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
++    parser.add_argument("--direction-source", required=True, choices=DIRECTION_SOURCES,
++                         help="'trained' = A-PSR (faithful); 'diff_in_means' = Multi-Gate ablation")
++    parser.add_argument("--layers", type=str, default=None,
++                         help="comma-separated layer indices. DEFAULT (omit) = ALL layers, which is "
++                              "what A-PSR actually is; setting this makes the run NOT faithful A-PSR")
++    parser.add_argument("--seed", type=int, default=42)
++    parser.add_argument("--sweep", action="store_true", help="sweep the 2 loss configs instead of one run")
++    parser.add_argument("--loss-configs", type=str, default=None,
++                         help='JSON list, e.g. \'[{"mse_weight":1.0,"nll_weight":0.0}]\'')
++    args = parser.parse_args()
++
++    layers = [int(x) for x in args.layers.split(",")] if args.layers else None
++    loss_configs = json.loads(args.loss_configs) if args.loss_configs else None
++    if args.sweep:
++        sweep(args.task, args.direction_source, layers, loss_configs, args.seed)
++    else:
++        main(args.task, args.direction_source, layers, args.seed)
+diff --git a/steering/batch_routing.py b/steering/batch_routing.py
+index ce0c58d..4ccd412 100644
+--- a/steering/batch_routing.py
++++ b/steering/batch_routing.py
+@@ -66,6 +66,60 @@ def left_pad_batch(tokenizer, prompts: list[str]) -> tuple[torch.Tensor, torch.T
+     return enc["input_ids"], enc["attention_mask"]
+ 
+ 
++def generate_batched_uniform(
++    model,
++    tokenizer,
++    prompts: list[str],
++    hooks: dict[int, Callable] | None = None,
++    max_new_tokens: int = 150,
++    max_batch_rows: int = 60,
++) -> list[str]:
++    """Batched generation where EVERY row gets the SAME intervention (or none). Complements
++    generate_with_routed_configs, which exists for the opposite case -- different configs on
++    different rows of one batch, one layer per group.
++
++    This is what multi-layer methods (A-PSR / Multi-Gate) need: those hook ALL layers for every
++    row, so `layer_by_group`'s one-layer-per-group model doesn't apply, and no routing is needed
++    at all since there's nothing to distinguish rows by. Passing hooks=None generates unsteered
++    (Base/Prompt baselines), so a caller can use one code path for every condition.
++
++    Chunked at max_batch_rows for the same reason evals/layer_hparam_search.py's
++    _chunk_groups_by_row_budget exists: an unbounded batch hit a real CUDA OOM on an 80GB A100.
++
++    Returns responses in the SAME order as `prompts`.
++    """
++    from steering.hooks import multi_steering_hook  # local import: avoids a hooks<->batch_routing cycle
++
++    responses: list[str] = []
++    for start in range(0, len(prompts), max_batch_rows):
++        chunk = prompts[start: start + max_batch_rows]
++        input_ids, attention_mask = left_pad_batch(tokenizer, chunk)
++        input_ids, attention_mask = input_ids.to(model.device), attention_mask.to(model.device)
++
++        def _do_generate():
++            return model.generate(
++                input_ids=input_ids,
++                attention_mask=attention_mask,
++                max_new_tokens=max_new_tokens,
++                do_sample=False,
++                pad_token_id=tokenizer.eos_token_id,
++                eos_token_id=tokenizer.eos_token_id,
++            )
++
++        if hooks:
++            with multi_steering_hook(model, hooks):
++                output_ids = _do_generate()
++        else:
++            output_ids = _do_generate()
++
++        prompt_len = input_ids.shape[1]
++        responses.extend(
++            tokenizer.decode(output_ids[r, prompt_len:], skip_special_tokens=True).strip()
++            for r in range(len(chunk))
++        )
++    return responses
++
++
+ def generate_with_routed_configs(
+     model,
+     tokenizer,
+diff --git a/steering/psr/data.py b/steering/psr/data.py
+index 0824d72..ce5bab9 100644
+--- a/steering/psr/data.py
++++ b/steering/psr/data.py
+@@ -98,6 +98,51 @@ def load_or_pool_prompt_last_token(model, tokenizer, items: list[dict], layer_id
+     return base_pool, instr_pool
+ 
+ 
++@torch.no_grad()
++def pool_prompt_last_token_all_layers(model, tokenizer, items: list[dict], n_layers: int) -> tuple[dict[int, torch.Tensor], dict[int, torch.Tensor]]:
++    """Same extraction as pool_prompt_last_token, but returns EVERY layer from a single forward
++    pass per prompt instead of one layer per call. Returns ({layer: (N,d)}, {layer: (N,d)}) for
++    (base, instructed).
++
++    This exists specifically for A-PSR / Multi-Gate, which need a direction at all n_layers layers:
++    calling pool_prompt_last_token in a loop would re-run 2 forward passes per item PER LAYER
++    (2 * n_items * 28 passes for Qwen2.5-7B), when out.hidden_states from ONE pass already contains
++    every layer. Same numbers, ~28x less compute -- worth the separate function rather than a
++    caching-layer workaround.
++    """
++    base_by_layer = {l: [] for l in range(n_layers)}
++    instr_by_layer = {l: [] for l in range(n_layers)}
++    for item in items:
++        base_ids = tokenizer(item["base_prompt"], return_tensors="pt")["input_ids"].to(model.device)
++        instr_ids = tokenizer(item["terse_prompt"], return_tensors="pt")["input_ids"].to(model.device)
++        out_base = model(input_ids=base_ids, output_hidden_states=True)
++        out_instr = model(input_ids=instr_ids, output_hidden_states=True)
++        for l in range(n_layers):
++            # hidden_states[0] is the embedding output; hidden_states[i+1] is layer i's output --
++            # same indexing convention steering/psr/gate.py's subsequent_layers_mse relies on.
++            base_by_layer[l].append(out_base.hidden_states[l + 1][0, -1, :].float().cpu())
++            instr_by_layer[l].append(out_instr.hidden_states[l + 1][0, -1, :].float().cpu())
++    return (
++        {l: torch.stack(v, dim=0) for l, v in base_by_layer.items()},
++        {l: torch.stack(v, dim=0) for l, v in instr_by_layer.items()},
++    )
++
++
++def load_or_pool_prompt_last_token_all_layers(model, tokenizer, items: list[dict], n_layers: int, cache_dir) -> tuple[dict[int, torch.Tensor], dict[int, torch.Tensor]]:
++    """Disk-cached wrapper, same discipline as load_or_pool_prompt_last_token. One file per pole
++    holding all layers -- A-PSR always wants every layer at once, so splitting per-layer would just
++    mean 56 tiny files and 56 torch.load calls for no benefit."""
++    cache_dir.mkdir(parents=True, exist_ok=True)
++    base_path = cache_dir / f"pooled_prompt_last_token_base_alllayers{n_layers}.pt"
++    instr_path = cache_dir / f"pooled_prompt_last_token_instr_alllayers{n_layers}.pt"
++    if base_path.exists() and instr_path.exists():
++        return torch.load(base_path), torch.load(instr_path)
++    base_by_layer, instr_by_layer = pool_prompt_last_token_all_layers(model, tokenizer, items, n_layers)
++    torch.save(base_by_layer, base_path)
++    torch.save(instr_by_layer, instr_path)
++    return base_by_layer, instr_by_layer
++
++
+ def pool_bipolar_activations(model, tokenizer, items: list[dict], layer_idx: int, responses: dict) -> torch.Tensor:
+     """Both poles concatenated together -- this is the raw material compute_conceptor's correlation
+     matrix gets built from. "Bipolar" (both poles pooled together) matches Triantafyllopoulos et
+diff --git a/steering/psr/multi_gate.py b/steering/psr/multi_gate.py
+new file mode 100644
+index 0000000..14d46ca
+--- /dev/null
++++ b/steering/psr/multi_gate.py
+@@ -0,0 +1,122 @@
++"""Multi-layer PSR mechanism -- the A-PSR ("all-layer") analogue of steering/psr/gate.py's
++single-layer forward_with_gate_hook. Pure mechanism: this file has NO opinion on where the
++directions come from (gradient-trained, diff-in-means, anything else) or which loss is used. That
++keeps A-PSR and its Multi-Gate ablation on one shared code path, differing only in what the caller
++hands in -- see src/psr/all_layer/train.py's --direction-source flag.
++
++Verified against Nokia's reference implementation (Nokia-Bell-Labs/steer-like-the-llm). The key
++finding, which is why this file is small: A-PSR is NOT a separate architecture in their code. It is
++literally the same FocusedSteeredModelConfig with `layers=list(range(num_layers))` instead of
++`layers=[layer]` (see their experiments/llm_steer_instruct/eval.py's "focused_all_layers" config
++vs. the single-layer configs). Their SteeredModelBase.create_probe_interventions builds one
++FocusedSteeringModule per layer, IntervenedModel registers them all as simultaneous hooks,
++forward_pass runs ONE pass through all of them, train_steering_modules calls loss.backward() ONCE,
++and optim.AdamW(intervened_model.parameters()) updates every layer's (gate, direction) jointly.
++The "jointly optimizes simultaneous interventions in one shared forward pass" property therefore
++falls out of hooking N layers in one pass and backpropagating once -- it needs no special
++machinery, which is exactly what steering/hooks.py's multi_steering_hook docstring already said.
++
++Two properties worth being explicit about, since both are load-bearing for faithfulness:
++
++1. CHAINED, NOT INDEPENDENT. Each layer's gate sees the activation that ACTUALLY arrives there,
++   already carrying every correction applied by earlier hooked layers, because all N hooks run
++   inside one real forward pass. This is the "iteratively apply the intervention at all layers"
++   behavior from the paper. It is the whole point, and it is what makes this genuinely different
++   from the pre-existing mislabeled "A-PSR" in src/psr/old_baseline/train_a_psr.py, which trained
++   N probes SEPARATELY on fixed precomputed activation pairs with zero interaction between layers.
++
++2. ONE OPTIMIZER, ONE BACKWARD. This file doesn't own the optimizer, but it returns per-layer fit
++   values in a single list precisely so the caller can build ONE loss over all layers and call
++   backward once (steering/psr/gate.py's regularization_loss already accepts that list and sums
++   per-layer penalties, matching Nokia's `for layer_output in ...: loss += regularization_loss`).
++   Training each layer's gate in a separate backward pass would NOT be A-PSR.
++"""
++import torch
++
++from steering.hooks import get_decoder_layers, rewrap_hidden, unwrap_hidden
++from steering.psr.gate import GateState, answer_only_mask, coefficient
++
++
++def forward_with_multi_gate_hook(
++    model,
++    gates: dict[int, GateState],
++    directions: dict[int, torch.Tensor],
++    layer_indices: list[int],
++    input_ids: torch.Tensor,
++    n_resp: int,
++):
++    """Live, gradient-tracked forward pass with a gate correction active at EVERY layer in
++    layer_indices simultaneously. Returns (hidden_states, logits, fit_vals) -- the same 3-tuple
++    shape steering/psr/training_loop.py's train_gate already expects from any forward_fn, except
++    fit_vals is a LIST (one tensor per hooked layer, ordered by layer_indices) rather than a single
++    tensor. regularization_loss handles both shapes, so train_gate needs no changes at all.
++
++    gates/directions are dicts keyed by layer index (not lists) so a caller can hook a subset of
++    layers without silently relying on positional alignment.
++    """
++    decoder_layers = get_decoder_layers(model)
++    captured_fit: dict[int, torch.Tensor] = {}
++    handles = []
++
++    for layer_idx in layer_indices:
++        def _make_wrapped(gate: GateState, direction: torch.Tensor, idx: int):
++            # Factory function is required here for the same reason multi_steering_hook needs one:
++            # without it every hook would close over the same loop variables by reference (Python's
++            # late-binding closures), so all N layers would apply whichever gate/direction was
++            # bound LAST -- silently training one layer's parameters N times instead of N layers'.
++            def wrapped(module, inputs, output):
++                hidden, rest = unwrap_hidden(output)
++                mask = answer_only_mask(hidden.shape[1], n_resp, hidden.device)
++                coeff, fit = coefficient(gate, hidden, mask)
++                correction = (coeff * direction.to(hidden.dtype)).to(hidden.dtype)
++                captured_fit[idx] = fit
++                return rewrap_hidden(hidden + correction, rest)
++
++            return wrapped
++
++        handles.append(
++            decoder_layers[layer_idx].register_forward_hook(
++                _make_wrapped(gates[layer_idx], directions[layer_idx], layer_idx)
++            )
++        )
++
++    try:
++        out = model(input_ids=input_ids, output_hidden_states=True)
++    finally:
++        for handle in handles:
++            handle.remove()
++
++    fit_vals = [captured_fit[idx] for idx in layer_indices if idx in captured_fit]
++    return out.hidden_states, out.logits, fit_vals
++
++
++def make_multi_inference_hooks(
++    gates: dict[int, GateState],
++    directions: dict[int, torch.Tensor],
++    layer_indices: list[int],
++) -> dict[int, callable]:
++    """Inference-time counterpart, shaped for steering.hooks.multi_steering_hook (which takes a
++    {layer_idx: hook_fn} dict). Mirrors steering/psr/gate.py's make_inference_hook exactly,
++    including its prefill-vs-decode distinction: seq_len > 1 means we're processing the prompt
++    (don't steer), seq_len == 1 means the single new token IS the response by construction (always
++    steer) -- the same is_generating logic Nokia's FocusedSteeringModule.forward uses, adapted to
++    HF's KV-cached generation loop.
++
++    No torch.no_grad() decorator here on purpose -- make_inference_hook has one, but it's applied
++    at the hook level there; callers of this function are expected to already be inside
++    torch.no_grad() (generation always is), and decorating here would silently break any future
++    gradient-requiring use of the same hooks.
++    """
++    hooks = {}
++    for layer_idx in layer_indices:
++        def _make_hook(gate: GateState, direction: torch.Tensor):
++            def hook_fn(hidden: torch.Tensor) -> torch.Tensor:
++                if hidden.shape[1] > 1:
++                    return hidden
++                coeff, _ = coefficient(gate, hidden, mask=None)
++                return hidden + (coeff * direction.to(hidden.dtype)).to(hidden.dtype)
++
++            return hook_fn
++
++        hooks[layer_idx] = _make_hook(gates[layer_idx], directions[layer_idx])
++    return hooks
