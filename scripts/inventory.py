@@ -37,6 +37,7 @@ Paper-facing aliases, used in prose only, never as file or variant names:
 import argparse
 import csv
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -45,7 +46,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from evals.bootstrap_analysis import bootstrap_ci
 
 GATES = ["NoGate", "SG", "MG"]
-DIRECTIONS = ["DiM", "Conc", "GradientTrained"]
+# Clamp is a full column as of 2026-09-19: it was reported outside the grid while only the
+# ungated NoGate+Clamp existed (no (direction, coefficient) decomposition to place), but
+# src/psr/clamp_gate/train.py adds SG+Clamp and MG+Clamp, so the gate axis is now populated for it
+# exactly like the additive columns.
+DIRECTIONS = ["DiM", "Conc", "GradientTrained", "Clamp"]
 
 ALIASES = {
     ("SG", "GradientTrained"): "S-PSR",
@@ -117,6 +122,25 @@ ABLATION_NEW = {
 }
 
 
+def is_degenerate(responses: list[str]) -> bool:
+    """True if a run looks NaN-poisoned rather than merely terse.
+
+    Two signatures, because either alone gives false negatives:
+      - a long run of one repeated character ("The!!!!!!!!!!..."), which is what argmax over a NaN
+        logit vector produces once it locks onto a token id;
+      - near-total lack of distinct outputs across the whole set.
+    Counting unique strings ALONE is not enough: a NaN run still emits a real first token from the
+    clean prefill, so "Function!!!...", "Parse!!!..." differ as strings while carrying no content.
+    That exact case slipped past an earlier unique-count-only check.
+    """
+    if not responses:
+        return False
+    runs = sum(1 for r in responses if re.search(r"(.)\1{9,}", r))
+    if runs >= len(responses) * 0.5:
+        return True
+    return len(set(responses)) <= max(2, len(responses) // 50)
+
+
 def _read_jsonl(p: Path):
     if not p.exists():
         return []
@@ -131,10 +155,15 @@ def _load(p: Path):
         return json.load(f)
 
 
-def _entry(tokens, scores=None, point=None, source="", extra=""):
+def _entry(tokens, scores=None, point=None, source="", extra="", conc=None, conc_lo=None, conc_hi=None):
     """One measured condition. `scores` (per-example) is preferred so a CI can be derived here
     rather than trusting a stored summary; `point` is the fallback when only a mean survived."""
     e = {"tokens": tokens, "source": source, "extra": extra}
+    # Judged conciseness, when the producing script stored it. Only the tiered searches do
+    # (as optimize_score + its CI); the per-example conciseness scores are not persisted anywhere,
+    # so this is a mean with a CI rather than something re-derivable here.
+    if conc is not None:
+        e.update(conc=conc, conc_lo=conc_lo, conc_hi=conc_hi)
     if scores:
         pt, lo, hi = bootstrap_ci(scores)
         e.update(correct=pt, lo=lo, hi=hi, n=len(scores))
@@ -149,11 +178,12 @@ def collect(results_dir: Path):
     cells: dict[tuple, dict] = {}
     outside: dict[tuple, dict] = {}
     baselines: dict[str, dict] = {}
+    surface_twins: dict[tuple, dict] = {}
+    degenerate_runs: list[str] = []
     seen: set[str] = set()
 
     def put(gate, direction, cond, entry):
-        target = outside if direction == "Clamp" else cells
-        target.setdefault((gate, direction), {"alone": None, "prompt": None})[cond] = entry
+        cells.setdefault((gate, direction), {"alone": None, "prompt": None})[cond] = entry
 
     # --- tiered searches (alone) ---
     for variant, (gate, direction) in TIERED.items():
@@ -175,7 +205,9 @@ def collect(results_dir: Path):
         elif r.get("mse_weight"):
             extra += " MSE"
         put(gate, direction, "alone",
-            _entry(r.get("avg_tokens"), r.get("correctness_scores"), r.get("judged_score"), p.name, extra))
+            _entry(r.get("avg_tokens"), r.get("correctness_scores"), r.get("judged_score"), p.name, extra,
+                   conc=r.get("optimize_score"), conc_lo=r.get("optimize_ci_lo"),
+                   conc_hi=r.get("optimize_ci_hi")))
         # Every tiered final also carries the Prompt-alone baseline it was paired against.
         if r.get("prompt_baseline_scores") and "prompt" not in baselines:
             baselines["prompt"] = _entry(r.get("prompt_avg_tokens"), r["prompt_baseline_scores"],
@@ -237,6 +269,46 @@ def collect(results_dir: Path):
                 _entry(d.get("steer_alone_avg_tokens"),
                        d["steer_alone_correctness_scores"], source=p.name))
 
+    # --- gated clamp (SG+Clamp / MG+Clamp), both conditions ---
+    p = results_dir / "clamp_gate_eval.json"
+    d = _load(p)
+    if d:
+        seen.add(p.name)
+        for stem, entry in d.items():
+            gate = "SG" if stem.startswith("sg_") else "MG"
+            loss = "NLL" if entry.get("nll_weight") else "MSE"
+            degenerate = False
+            for cond in ("alone", "prompt"):
+                e = entry.get(cond) or {}
+                # EXCLUDE NaN-poisoned runs rather than plotting 20.0 tokens as a length result.
+                if is_degenerate(e.get("responses") or []):
+                    degenerate = True
+            if degenerate:
+                degenerate_runs.append(f"{gate}+Clamp ({loss})")
+                continue
+            for cond in ("alone", "prompt"):
+                e = entry.get(cond) or {}
+                if e.get("avg_tokens") is None:
+                    continue
+                put(gate, "Clamp", cond,
+                    _entry(e["avg_tokens"], e.get("scores"), e.get("correct"), p.name,
+                           f"{len(entry.get('layers', []))}L, {loss}"))
+
+    # --- surface-ablation twins: same method, response-only surface ---
+    p = results_dir / "surface_ablation.json"
+    d = _load(p)
+    if d:
+        seen.add(p.name)
+        for variant, v in d.items():
+            direction = "Clamp" if v.get("form") == "clamp" else "DiM"
+            e = (v.get("surfaces") or {}).get("response_only") or {}
+            if e.get("avg_tokens") is None:
+                continue
+            # Response-only is a different INTERVENTION SURFACE, not a different cell, so it is
+            # tracked separately instead of overwriting the published all-positions result.
+            surface_twins[("NoGate", direction)] = _entry(
+                e["avg_tokens"], e.get("scores"), e.get("correct"), p.name, "response-only")
+
     # --- direction-only ablations (gate stripped -> NoGate row, both conditions) ---
     ablation_files = {f"ablation_direction_only_{s}.json": gd for s, gd in ABLATION.items()}
     ablation_files.update(ABLATION_NEW)
@@ -259,7 +331,7 @@ def collect(results_dir: Path):
         if f.suffix in (".json", ".jsonl") and f.name not in known
         and not f.name.endswith(".log")
     )
-    return cells, outside, baselines, unclassified
+    return cells, outside, baselines, unclassified, surface_twins, degenerate_runs
 
 
 def _fmt(e):
@@ -275,7 +347,7 @@ def _fmt(e):
 def main(task: str) -> None:
     from adapters.registry import get_adapter
     results_dir = get_adapter(task).RESULTS_DIR
-    cells, outside, baselines, unclassified = collect(results_dir)
+    cells, outside, baselines, unclassified, surface_twins, degenerate_runs = collect(results_dir)
 
     print(f"\n{'=' * 78}\nRESULT INVENTORY -- {results_dir}\n{'=' * 78}")
 
@@ -328,6 +400,17 @@ def main(task: str) -> None:
             print(f"  {gate}+{direction:<26} {(a or pp or {}).get('extra','')}")
             print(f"    {'alone':<9} {_fmt(a)}")
             print(f"    {'+Prompt':<9} {_fmt(pp)}")
+
+    if surface_twins:
+        print(f"\nSURFACE TWINS  (same method, response-only surface instead of all positions)")
+        print(f"{'-' * 78}")
+        for (gate, direction), e in sorted(surface_twins.items()):
+            print(f"  {gate}+{direction:<26} {_fmt(e)}   [{e['source']}]")
+    if degenerate_runs:
+        print(f"\nEXCLUDED -- DEGENERATE OUTPUT ({len(degenerate_runs)})")
+        print(f"{'-' * 78}")
+        for r in degenerate_runs:
+            print(f"  {r}: collapsed to <=2 unique responses (NaN-poisoned checkpoint)")
 
     missing = [f"{g}+{d}" for g in GATES for d in DIRECTIONS if (g, d) not in cells]
     partial = [f"{g}+{d} (+Prompt)" for g in GATES for d in DIRECTIONS

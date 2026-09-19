@@ -23,6 +23,7 @@ see BATCHED_STEERING.md for why batching heterogeneous configs together is exact
 """
 import argparse
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -273,6 +274,7 @@ RETRAIN_FNS = {
     # Gated clamp: PSR's learned gate scaling Stolfo's closed-form shortfall.
     "sg_clamp": _retrain_sg_clamp,
 }
+COEFF_SWEEP_VARIANTS = {"const", "const_resp"}  # additive: sweep the scalar coefficient
 TRAINING_FREE_VARIANTS = {"const", "stolfo", "const_resp", "stolfo_resp"}  # no gradient descent at all -- see run_training_free_search:
 # the "MSE cheaply prefilters a hyperparameter combo per layer, judged eval refines" structure
 # run_tiered_search uses doesn't apply here (there's no training loss to prefilter with), so these
@@ -356,10 +358,14 @@ def mark_pareto_frontier(results: list[dict]) -> list[dict]:
     ]
 
 
-JUDGE_CONCURRENCY = 12  # score_response is 2 sequential blocking OpenAI calls each -- purely
-# I/O-bound, safe to parallelize (each response is scored independently, no shared state). 12 is
-# a conservative starting point re: rate limits, not measured against this project's actual
-# tier/org limits -- raise it if judging is still the bottleneck and you're not hitting 429s.
+JUDGE_CONCURRENCY = int(os.environ.get("JUDGE_CONCURRENCY", 4))
+# score_response is 2 sequential blocking OpenAI calls each -- purely I/O-bound, safe to
+# parallelize (each response is scored independently, no shared state).
+# Lowered from 12 to 4 on 2026-09-18 after hitting a TOKENS-PER-MINUTE limit. Concurrency doesn't
+# change how many tokens a run consumes, only how fast -- and each judge prompt carries the full
+# function source plus reference explanation, so 12 in flight at once is a large burst. 4 keeps
+# most of the speedup (judging was ~10x sequential) with far more TPM headroom. Override with the
+# JUDGE_CONCURRENCY env var; raise it if you have room, drop to 1 to serialize entirely.
 
 
 def _score_all_concurrently(eval_adapter, rows: list[dict], responses: list[str]) -> list[dict]:
@@ -747,10 +753,14 @@ def run_training_free_search(
         print(f"Tier 1 already complete ({len(existing['tier1'])} rows) -- reusing from {out_path}")
         tier1_results = existing["tier1"]
     else:
-        if variant == "const":
+        # Additive variants have a free coefficient to sweep; clamp variants do not (their
+        # magnitude is the closed-form shortfall). Keyed on the SET, not `== "const"`, so adding a
+        # surface twin like const_resp can't silently fall through to the no-coefficient branch --
+        # which is exactly what raised KeyError: 'coeff' on 2026-09-18.
+        if variant in COEFF_SWEEP_VARIANTS:
             coeff_grid = coeff_grid if coeff_grid is not None else DEFAULT_CONST_COEFF_GRID
             tier1_candidates = [{"layer": l, "coeff": c} for l in layers for c in coeff_grid]
-        else:  # stolfo -- no coefficient, one candidate per layer
+        else:  # clamp variants -- no coefficient, one candidate per layer
             tier1_candidates = [{"layer": l} for l in layers]
         print(f"== Tier 1 (= full grid, no training to prefilter with): {len(tier1_candidates)} "
               f"candidates, n={tier1_n}, real judged evaluation ==")

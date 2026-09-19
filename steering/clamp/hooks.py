@@ -53,7 +53,8 @@ def make_clamp_hook(
             # Prefill (the whole prompt) -- identical guard to make_inference_hook's.
             return hidden
         d = direction.to(hidden.dtype).to(hidden.device)
-        return hidden + (clamp_delta(hidden, direction, target).to(hidden.dtype) * d)
+        correction = (clamp_delta(hidden, direction, target) * d.float()).to(hidden.dtype)
+        return hidden + correction
 
     return hook_fn
 
@@ -86,9 +87,13 @@ def make_gated_clamp_hook(
         if response_only and hidden.shape[1] > 1:
             return hidden
         coeff, _ = coefficient(gate, hidden, mask=None)
-        d = direction.to(hidden.dtype).to(hidden.device)
-        delta = clamp_delta(hidden, direction, target).to(hidden.dtype)
-        return hidden + (coeff * delta * d)
+        d = direction.to(hidden.device)
+        delta = clamp_delta(hidden, direction, target)
+        # Compute in float32, cast the FINAL product once -- `coeff` is float32 (the gate's params
+        # are), so casting only the factors leaves a float32 result that leaks into the next
+        # layer and hits `mat1 and mat2 must have the same dtype`.
+        correction = (coeff.float() * delta * d.float()).to(hidden.dtype)
+        return hidden + correction
 
     return hook_fn
 
@@ -119,10 +124,10 @@ def forward_with_gated_clamp_hook(
         hidden, rest = unwrap_hidden(output)
         mask = answer_only_mask(hidden.shape[1], n_resp, hidden.device)
         coeff, fit = coefficient(gate, hidden, mask)
-        d = direction.to(hidden.dtype)
-        delta = clamp_delta(hidden, direction, target).to(hidden.dtype)
+        delta = clamp_delta(hidden, direction, target)
+        correction = (coeff.float() * delta * direction.float().to(hidden.device)).to(hidden.dtype)
         captured["fit"] = fit
-        return rewrap_hidden(hidden + (coeff * delta * d), rest)
+        return rewrap_hidden(hidden + correction, rest)
 
     handle = layer.register_forward_hook(wrapped)
     try:
@@ -158,10 +163,10 @@ def forward_with_multi_gated_clamp_hook(
                 hidden, rest = unwrap_hidden(output)
                 mask = answer_only_mask(hidden.shape[1], n_resp, hidden.device)
                 coeff, fit = coefficient(gate, hidden, mask)
-                d = direction.to(hidden.dtype)
-                delta = clamp_delta(hidden, direction, target).to(hidden.dtype)
+                delta = clamp_delta(hidden, direction, target)
+                correction = (coeff.float() * delta * direction.float().to(hidden.device)).to(hidden.dtype)
                 captured[i] = fit
-                return rewrap_hidden(hidden + (coeff * delta * d), rest)
+                return rewrap_hidden(hidden + correction, rest)
             return wrapped
         handles.append(decoder_layers[idx].register_forward_hook(
             _make(gates[idx], directions[idx], targets[idx], idx)))

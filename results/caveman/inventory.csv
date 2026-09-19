@@ -1,18 +1,23 @@
 gate,direction,alias,condition,avg_tokens,correct,ci_lo,ci_hi,n,config,source
 MG,Conc,,alone,93.4,1.9778,1.9556,1.9944,180,"all L, MSE",mg_variants_eval.json
-MG,Conc,,+Prompt,28.7,1.6833,1.6167,1.7500,180,"all L, MSE",mg_variants_eval.json
+MG,Conc,,+Prompt,28.7,1.6833,1.6111,1.7500,180,"all L, MSE",mg_variants_eval.json
 MG,DiM,,alone,92.9,1.9778,1.9556,1.9944,180,"all L, MSE",mg_variants_eval.json
-MG,DiM,,+Prompt,29.7,1.7389,1.6778,1.8000,180,"all L, NLL",mg_variants_eval.json
+MG,DiM,,+Prompt,29.7,1.7389,1.6722,1.8000,180,"all L, NLL",mg_variants_eval.json
 MG,GradientTrained,A-PSR,alone,85.4,1.9889,1.9722,2.0000,180,"all L, MSE",mg_variants_eval.json
-MG,GradientTrained,A-PSR,+Prompt,40.9,1.7556,1.6889,1.8167,180,"all L, MSE",mg_variants_eval.json
-NoGate,Conc,,alone,140.2,1.9556,1.9278,1.9833,180,L16 coeff=36.0,nogate_conc_eval.json
-NoGate,Conc,,+Prompt,22.1,1.3611,1.2944,1.4278,180,L16 coeff=36.0,nogate_conc_eval.json
+MG,GradientTrained,A-PSR,+Prompt,40.9,1.7556,1.6889,1.8111,180,"all L, MSE",mg_variants_eval.json
+NoGate,Clamp,,alone,59.5,1.9667,1.9389,1.9889,180,L16,stolfo_tiered_search.jsonl
+NoGate,Clamp,,+Prompt,30.8,1.7667,1.7056,1.8222,180,,nogate_clamp_prompt_plus.json
+NoGate,Conc,,alone,140.2,1.9556,1.9222,1.9833,180,L16 coeff=36.0,nogate_conc_eval.json
+NoGate,Conc,,+Prompt,22.1,1.3611,1.2944,1.4333,180,L16 coeff=36.0,nogate_conc_eval.json
 NoGate,DiM,Const,alone,145.1,1.9278,1.8889,1.9611,180,L18 c=28,const_tiered_search.jsonl
+NoGate,DiM,Const,+Prompt,25.4,1.4889,1.4167,1.5611,180,,nogate_dim_prompt_plus.json
 NoGate,GradientTrained,,alone,131.5,1.9611,1.9333,1.9889,180,L14 coeff=36.0,nogate_gradient_trained_eval.json
-NoGate,GradientTrained,,+Prompt,33.6,1.7778,1.7167,1.8333,180,L14 coeff=36.0,nogate_gradient_trained_eval.json
+NoGate,GradientTrained,,+Prompt,33.6,1.7778,1.7167,1.8389,180,L14 coeff=36.0,nogate_gradient_trained_eval.json
+SG,Clamp,,alone,62.5,,,,,"1L, NLL",clamp_gate_eval.json
+SG,Clamp,,+Prompt,35.8,,,,,"1L, NLL",clamp_gate_eval.json
 SG,Conc,,alone,95.6,1.9667,1.9389,1.9889,180,L16 a=2.0 MSE,conceptor_tiered_search.jsonl
-SG,Conc,,+Prompt,28.4,1.6833,1.6111,1.7500,180,,sg_conc_prompt_plus.json
+SG,Conc,,+Prompt,28.4,1.6833,1.6167,1.7500,180,,sg_conc_prompt_plus.json
 SG,DiM,,alone,96.5,1.9556,1.9222,1.9833,180,L16 MSE,sg_tiered_search.jsonl
+SG,DiM,,+Prompt,30.8,1.7778,1.7111,1.8389,180,,sg_dim_prompt_plus.json
 SG,GradientTrained,S-PSR,alone,88.4,1.9722,1.9444,1.9944,180,L14 NLL,proper_tiered_search.jsonl
 SG,GradientTrained,S-PSR,+Prompt,34.0,1.8111,1.7500,1.8667,180,,sg_gradient_trained_prompt_plus.json
-NoGate,Clamp,,alone,59.5,1.9667,1.9389,1.9889,180,L16,stolfo_tiered_search.jsonl
