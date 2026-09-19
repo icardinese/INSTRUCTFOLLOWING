@@ -22,3 +22,5 @@ __pycache__/
 *.pyc
 .pytest_cache/
 openai.key
+openai.key
+openai.key*
