@@ -30,6 +30,7 @@ from evals.registry import get_eval_adapter
 from steering.batch_routing import generate_batched_uniform
 from steering.clamp.hooks import make_multi_gated_clamp_hooks
 from steering.psr.gate import GateState
+from adapters.registry import TASK_CHOICES
 
 CONFIGS = [
     ("sg_clamp_probe_mse", "SG+Clamp (MSE)"),
@@ -173,7 +174,7 @@ def judge_saved(task: str) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--task", default="caveman", choices=["caveman", "ifeval"])
+    ap.add_argument("--task", default="caveman", choices=TASK_CHOICES)
     ap.add_argument("--judge", action="store_true", help="score correctness now (uses API budget)")
     ap.add_argument("--judge-saved", action="store_true", help="score a previous run's saved responses")
     ap.add_argument("--n", type=int, default=180)

@@ -63,9 +63,9 @@ def test_mark_pareto_frontier_identifies_non_dominated_candidates():
     from evals.layer_hparam_search import mark_pareto_frontier
 
     results = [
-        {"layer": 2, "skipped": False, "judged_score": 2.0, "optimize_score": 1.0},  # best correctness -- on frontier
-        {"layer": 4, "skipped": False, "judged_score": 1.0, "optimize_score": 3.0},  # best conciseness -- on frontier
-        {"layer": 6, "skipped": False, "judged_score": 1.0, "optimize_score": 1.0},  # strictly worse than layer 2 on BOTH -- dominated
+        {"layer": 2, "skipped": False, "judged_score": 2.0, "optimize_score": 1.0, "avg_tokens": 500.0},  # best correctness -- on frontier
+        {"layer": 4, "skipped": False, "judged_score": 1.0, "optimize_score": 3.0, "avg_tokens": 250.0},  # best conciseness -- on frontier
+        {"layer": 6, "skipped": False, "judged_score": 1.0, "optimize_score": 1.0, "avg_tokens": 500.0},  # strictly worse than layer 2 on BOTH -- dominated
         {"layer": 8, "skipped": True},  # skipped -- must get None, not True/False
     ]
     marked = mark_pareto_frontier(results)
@@ -211,8 +211,8 @@ def test_select_constrained_survivors_mse_has_no_vote():
     from evals.layer_hparam_search import select_constrained_survivors
 
     results = [
-        {"layer": 2, "skipped": False, "correctness_scores": [2.0] * 20, "judged_score": 2.0, "optimize_score": 0.5},
-        {"layer": 4, "skipped": False, "correctness_scores": [2.0] * 20, "judged_score": 2.0, "optimize_score": 1.5},
+        {"layer": 2, "skipped": False, "correctness_scores": [2.0] * 20, "judged_score": 2.0, "optimize_score": 0.5, "avg_tokens": 666.67},
+        {"layer": 4, "skipped": False, "correctness_scores": [2.0] * 20, "judged_score": 2.0, "optimize_score": 1.5, "avg_tokens": 400.0},
     ]
     survivors = select_constrained_survivors(results, top_k=2)
     assert {s["layer"] for s in survivors} == {2, 4}, "final_mse was never even provided -- both must survive on correctness alone"
@@ -225,8 +225,8 @@ def test_select_constrained_survivors_excludes_a_significantly_less_correct_cand
     from evals.layer_hparam_search import select_constrained_survivors
 
     results = [
-        {"layer": 2, "skipped": False, "correctness_scores": [2.0] * 20, "judged_score": 2.0, "optimize_score": 1.0},  # best correctness, mediocre conciseness
-        {"layer": 4, "skipped": False, "correctness_scores": [0.0] * 20, "judged_score": 0.0, "optimize_score": 100.0},  # terrible correctness, amazing conciseness
+        {"layer": 2, "skipped": False, "correctness_scores": [2.0] * 20, "judged_score": 2.0, "optimize_score": 1.0, "avg_tokens": 500.0},  # best correctness, mediocre conciseness
+        {"layer": 4, "skipped": False, "correctness_scores": [0.0] * 20, "judged_score": 0.0, "optimize_score": 100.0, "avg_tokens": 9.9},  # terrible correctness, amazing conciseness
     ]
     survivors = select_constrained_survivors(results, top_k=2)
     assert [s["layer"] for s in survivors] == [2], "layer 4 must be excluded -- a 2.0 vs 0.0 gap with zero variance is maximally significant"
@@ -240,8 +240,8 @@ def test_select_constrained_survivors_ranks_by_conciseness_among_gate_passing_ca
     from evals.layer_hparam_search import select_constrained_survivors
 
     results = [
-        {"layer": 2, "skipped": False, "correctness_scores": [2.0, 1.8] * 10, "judged_score": 1.9, "optimize_score": 0.5},   # same mean correctness, LESS concise
-        {"layer": 4, "skipped": False, "correctness_scores": [1.8, 2.0] * 10, "judged_score": 1.9, "optimize_score": 2.0},   # same mean correctness, MORE concise
+        {"layer": 2, "skipped": False, "correctness_scores": [2.0, 1.8] * 10, "judged_score": 1.9, "optimize_score": 0.5, "avg_tokens": 666.67},   # same mean correctness, LESS concise
+        {"layer": 4, "skipped": False, "correctness_scores": [1.8, 2.0] * 10, "judged_score": 1.9, "optimize_score": 2.0, "avg_tokens": 333.33},   # same mean correctness, MORE concise
     ]
     survivors = select_constrained_survivors(results, top_k=1)
     assert survivors[0]["layer"] == 4, "identical mean correctness with genuine two-sided noise must not be flagged significant -- conciseness should decide"
@@ -268,9 +268,9 @@ def test_select_constrained_survivors_falls_back_to_correctness_when_everyone_lo
     prompt_scores = [2.0] * 20
     results = [
         {"layer": 2, "skipped": False, "correctness_scores": [0.0, 1.0] * 10, "judged_score": 0.5,
-         "optimize_score": 5.0, "prompt_baseline_scores": prompt_scores},   # worse correctness, MUCH more concise
+         "optimize_score": 5.0, "avg_tokens": 166.67, "prompt_baseline_scores": prompt_scores},   # worse correctness, MUCH more concise
         {"layer": 4, "skipped": False, "correctness_scores": [1.0, 0.5] * 10, "judged_score": 0.75,
-         "optimize_score": 1.0, "prompt_baseline_scores": prompt_scores},   # better correctness, less concise
+         "optimize_score": 1.0, "avg_tokens": 500.0, "prompt_baseline_scores": prompt_scores},   # better correctness, less concise
     ]
     survivors = select_constrained_survivors(results, top_k=2)
     assert len(survivors) == 2, "fallback must still return candidates, not an empty list"
@@ -286,7 +286,7 @@ def test_select_constrained_survivors_does_not_flag_fallback_when_prompt_gate_is
     prompt_scores = [0.0] * 20  # trivially easy to beat
     results = [
         {"layer": 2, "skipped": False, "correctness_scores": [2.0] * 20, "judged_score": 2.0,
-         "optimize_score": 1.0, "prompt_baseline_scores": prompt_scores},
+         "optimize_score": 1.0, "avg_tokens": 500.0, "prompt_baseline_scores": prompt_scores},
     ]
     survivors = select_constrained_survivors(results, top_k=1)
     assert survivors[0]["prompt_floor_fallback"] is False
@@ -300,9 +300,9 @@ def test_select_constrained_survivors_keeps_a_candidate_that_beats_prompt():
     prompt_scores = [2.0, 1.9] * 10  # mean 1.95, genuine two-sided variance
     results = [
         {"layer": 2, "skipped": False, "correctness_scores": [2.0, 1.9] * 10, "judged_score": 1.95,
-         "optimize_score": 1.0, "prompt_baseline_scores": prompt_scores},  # same distribution as Prompt, less concise
+         "optimize_score": 1.0, "avg_tokens": 500.0, "prompt_baseline_scores": prompt_scores},  # same distribution as Prompt, less concise
         {"layer": 4, "skipped": False, "correctness_scores": [1.9, 2.0] * 10, "judged_score": 1.95,
-         "optimize_score": 3.0, "prompt_baseline_scores": prompt_scores},  # same mean, out of phase (genuine 2-sided diff), much more concise
+         "optimize_score": 3.0, "avg_tokens": 250.0, "prompt_baseline_scores": prompt_scores},  # same mean, out of phase (genuine 2-sided diff), much more concise
     ]
     survivors = select_constrained_survivors(results, top_k=1)
     assert survivors[0]["layer"] == 4, "layer 4 is statistically tied with both the grid's best and Prompt alone -- its far better conciseness should win"
@@ -397,7 +397,7 @@ def test_run_tiered_search_reuses_tier1_and_only_runs_tier2_and_final(tmp_path, 
     out_path.write_text(
         json.dumps({"tier": "tier1", "layer": 14, "mse_weight": 1.0, "nll_weight": 0.0, "skipped": False,
                     "judged_score": 1.9, "ci_lo": 1.8, "ci_hi": 2.0, "correctness_scores": [1.9] * 20,
-                    "optimize_score": 1.0, "optimize_ci_lo": 1.0, "optimize_ci_hi": 1.0, "n": 20}) + "\n"
+                    "optimize_score": 1.0, "avg_tokens": 500.0, "optimize_ci_lo": 1.0, "optimize_ci_hi": 1.0, "n": 20}) + "\n"
     )
     (tmp_path / "psr_proper_sweep.jsonl").write_text(
         json.dumps({"layer": 14, "mse_weight": 1.0, "nll_weight": 0.0, "final_mse": 1.0}) + "\n"
@@ -431,7 +431,7 @@ def test_run_tiered_search_reuses_tier1_and_only_runs_tier2_and_final(tmp_path, 
         calls.append((n_examples, split, len(candidates)))
         # Tier 2 and Final both go through this fake -- return a plausible winner each time.
         return [{**c, "skipped": False, "judged_score": 1.95, "ci_lo": 1.9, "ci_hi": 2.0,
-                 "correctness_scores": [1.95] * n_examples, "optimize_score": 1.0,
+                 "correctness_scores": [1.95] * n_examples, "optimize_score": 1.0, "avg_tokens": 500.0,
                  "optimize_ci_lo": 1.0, "optimize_ci_hi": 1.0, "n": n_examples,
                  "fully_correct_rate": 0.9, "avg_tokens": 20.0,
                  "prompt_fully_correct_rate": 0.8, "prompt_avg_tokens": 50.0} for c in candidates]

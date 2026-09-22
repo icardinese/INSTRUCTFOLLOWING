@@ -38,6 +38,7 @@ from evals.bootstrap_analysis import bootstrap_ci, paired_bootstrap_diff
 from evals.registry import get_eval_adapter
 from steering.const.hooks import make_const_hook
 from steering.hooks import steering_hook
+from adapters.registry import TASK_CHOICES
 
 COEFF_GRID = [6.0, 12.0, 20.0, 28.0, 36.0]  # same starting grid caveman-steer's Const calibration
 # used for an already-unit-normalized direction on this model -- a reasonable prior, not a
@@ -164,7 +165,7 @@ def run(task: str, checkpoint_name: str, coeff_grid: list[float], calib_n: int, 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
+    parser.add_argument("--task", required=True, choices=TASK_CHOICES)
     parser.add_argument("--checkpoint", required=True,
                          help="checkpoint filename under results/<task>/, e.g. psr_proper_probe.pt or psr_conceptor_probe.pt")
     parser.add_argument("--coeffs", type=str, default=None, help="comma-separated coefficient grid, e.g. '6,12,20,28,36'")

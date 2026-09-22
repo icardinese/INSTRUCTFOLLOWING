@@ -37,6 +37,13 @@ CONCISENESS_JUDGE_MODEL = "gpt-4o-mini"
 # conciseness on the reference and bias it. Skipping is safe; merging is not.
 SKIP_CONCISENESS = os.environ.get("JUDGE_SKIP_CONCISENESS", "0") == "1"
 
+# How Tier 1 survivors are ranked once the correctness gates have run, and the top of the
+# primary field's scale. Declared per task because the right ranking axis is a property OF THE
+# TASK: caveman's instruction is ABOUT brevity, so brevity is its compliance signal and fewer
+# tokens legitimately wins. No other task works that way -- see evals/triage/judge.py.
+RANK_BY = "avg_tokens"       # ascending; fewer tokens wins
+PRIMARY_FIELD_MAX = 2        # "correct" is judged 0/1/2
+
 SCORE_FIELDS = (["correct", "coherent"] if SKIP_CONCISENESS
                 else ["correct", "coherent", "conciseness"])  # exactly what score_response returns --
 # summarize.py uses this to safely split "{cond}_{field}" keys back apart, since condition names

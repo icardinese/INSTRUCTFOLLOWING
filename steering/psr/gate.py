@@ -11,6 +11,8 @@ import torch.nn.functional as F
 
 from core.model_common import get_decoder_layers
 from steering.hooks import rewrap_hidden, unwrap_hidden
+from steering.psr.reference_config import USE_COEFF_BIAS
+from steering.psr.spans import ANSWER_ONLY, prefill_tail_length, steering_mask
 
 
 @dataclass
@@ -25,13 +27,34 @@ class GateState:
     coeff_bias: torch.Tensor   # (1,) -- learned additive offset on the coefficient
 
     def parameters(self) -> list[torch.Tensor]:
-        return [self.weight, self.bias, self.coeff_bias]
+        """Only tensors that actually require grad. coeff_bias is frozen at 0 by default (see
+        init_gate_state), and handing a requires_grad=False leaf to an optimizer is at best a
+        no-op and at worst an error depending on torch version -- so filter here rather than
+        making all seven call sites remember to."""
+        return [p for p in (self.weight, self.bias, self.coeff_bias) if p.requires_grad]
 
 
-def init_gate_state(hidden_size: int, device: str, dtype: torch.dtype = torch.float32) -> GateState:
+def init_gate_state(
+    hidden_size: int,
+    device: str,
+    dtype: torch.dtype = torch.float32,
+    use_coeff_bias: bool = USE_COEFF_BIAS,
+) -> GateState:
+    """coeff_bias defaults to FROZEN AT ZERO. The parameter is faithful -- it is b_{m,l} in the
+    paper (Section 3.6) and the reference's FocusedSteeringModule computes
+    `user_steering_coeffs + steering_coeff_bias`, which is exactly this project's
+    `1.0 + coeff_bias` at alpha=1. But FocusedSteeredModelConfig's dataclass default of
+    use_steering_coeff_bias=True is never used in any reported experiment:
+    base_architecture_focused() sets it False, and experiments/llm_steer_instruct/eval.py sets
+    it False again. Training it is therefore an extra degree of freedom relative to every
+    published PSR number.
+
+    Kept as a flag rather than deleted so the ablation ("does a learned global scale help?") is
+    still one argument away, and so checkpoint format is unchanged -- coeff_bias is still saved,
+    it is simply always 0.0."""
     weight = (torch.randn(hidden_size, 1, device=device, dtype=dtype) * 0.01).requires_grad_(True)
     bias = torch.zeros(1, device=device, dtype=dtype).requires_grad_(True)
-    coeff_bias = torch.zeros(1, device=device, dtype=dtype).requires_grad_(True)
+    coeff_bias = torch.zeros(1, device=device, dtype=dtype).requires_grad_(use_coeff_bias)
     return GateState(weight=weight, bias=bias, coeff_bias=coeff_bias)
 
 
@@ -41,10 +64,22 @@ def location_fit(gate: GateState, hidden: torch.Tensor) -> torch.Tensor:
 
 
 def answer_only_mask(seq_len: int, n_resp: int, device) -> torch.Tensor:
-    """True for the last n_resp positions (the response span). PSR's whole premise is selective
-    intervention, so this is enforced directly rather than left for the gate to learn on its own."""
-    positions = torch.arange(seq_len, device=device)
-    return (positions >= (seq_len - n_resp)).view(1, seq_len, 1)
+    """R (response-only) mask: the final PROMPT token plus the response span, n_resp + 1 positions.
+
+    The +1 is the reference's definition, not an off-by-one bug. Their mask is
+    `token_positions >= last_input_token_positions` (constant_steering.py::compute_steering_mask),
+    and last_input_token_position is the index of the last prompt token, not the first response
+    token (tokenization_utils.compute_last_input_token_index returns len(prompt_tokens) - 1), so
+    `>=` includes it. That position is the one whose hidden state produces the first generated
+    token; excluding it (as this file did before 2026-09-20) meant the intervention never touched
+    the decision that sets the tone for the whole response.
+
+    Kept as a named wrapper because R is the default surface for caveman and IFEval and most call
+    sites want it by name. For QR, or to make the surface configurable, call
+    steering.psr.spans.steering_mask directly.
+
+    response_nll, subsequent_layers_mse and make_inference_hook must all agree on this span."""
+    return steering_mask(seq_len, n_resp, device, location=ANSWER_ONLY)
 
 
 def coefficient(gate: GateState, hidden: torch.Tensor, mask: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
@@ -115,8 +150,8 @@ def subsequent_layers_mse(hidden_pred, hidden_target, layer_idx: int, n_resp: in
     layer_idx+1 .. n_layers inclusive."""
     total = torch.tensor(0.0, device=hidden_pred[0].device)
     for idx in range(layer_idx + 1, n_layers + 1):
-        pred = hidden_pred[idx][0, -n_resp:, :].float()
-        target = hidden_target[idx][0, -n_resp:, :].float()
+        pred = hidden_pred[idx][0, -(n_resp + 1):, :].float()
+        target = hidden_target[idx][0, -(n_resp + 1):, :].float()
         total = total + F.mse_loss(pred, target)
     return total
 
@@ -126,15 +161,42 @@ def collect_target_hidden_states(model, full_instr: torch.Tensor):
     return model(input_ids=full_instr, output_hidden_states=True).hidden_states
 
 
-def make_inference_hook(gate: GateState, direction: torch.Tensor):
-    """Inference-time hook for use with steering.hooks.steering_hook. Distinguishes prefill (full
-    prompt, seq_len > 1 -- don't steer, it's all prompt) from generation steps (seq_len == 1 -- the
-    single new token IS the response by construction, always steer) -- same is_generating logic
-    Nokia's reference implementation uses, adapted to HF's KV-cache generation loop."""
+def make_inference_hook(gate: GateState, direction: torch.Tensor, prefill_tail: int = 1):
+    """Inference-time hook for use with steering.hooks.steering_hook.
+
+    PREFILL IS NOT SKIPPED. The reference does not skip it either -- this was a misreading of
+    their `is_generating` flag that stood in this file until 2026-09-20. Their logic is:
+
+        is_generating = max_seq_len == 1
+        steering_mask = compute_steering_mask(is_generating, ..., self.config.steering_location)
+
+    When is_generating is False (prefill), they do not bail out; they apply the positional mask,
+    and under steering_location="answer_only" that mask is `pos >= last_input_token_position`,
+    which still selects the FINAL PROMPT TOKEN. So the reference steers
+    {last prompt token} u {every generated token}. Skipping prefill entirely dropped the first
+    of those, and left training (which does steer it, via answer_only_mask) disagreeing with
+    inference.
+
+    prefill_tail is how many TRAILING prefill positions to steer, and is what makes the R/QR
+    surface switchable at inference. 1 == R (the final prompt token). For QR, pass
+    steering.psr.spans.prefill_tail_length(prompt_len, "question_and_answer", last_sys_idx),
+    which counts from the right so it stays correct for every row of a left-padded batch.
+
+    Counting from the right is safe precisely because steering/batch_routing.py::left_pad_batch
+    left-pads, right-aligning every row. Under right padding these positions would be pad tokens
+    for the shorter rows -- do not change the padding side without revisiting this."""
     @torch.no_grad()
     def hook_fn(hidden: torch.Tensor) -> torch.Tensor:
         if hidden.shape[1] > 1:
-            return hidden
+            # Prefill: steer the trailing `prefill_tail` positions (1 for R, the whole
+            # question span for QR).
+            k = min(prefill_tail, hidden.shape[1])
+            tail = hidden[:, -k:, :]
+            coeff, _ = coefficient(gate, tail, mask=None)
+            out = hidden.clone()
+            out[:, -k:, :] = tail + (coeff * direction.to(hidden.dtype)).to(hidden.dtype)
+            return out
+        # Decode: the single new token IS a response token by construction.
         coeff, _ = coefficient(gate, hidden, mask=None)
         return hidden + (coeff * direction.to(hidden.dtype)).to(hidden.dtype)
     return hook_fn

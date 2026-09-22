@@ -45,17 +45,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from adapters.registry import get_adapter
 from core.generation_cache import load_or_compute_responses
-from core.model_common import generate_response, load_model, num_layers
+from core.model_common import generate_response, load_model, num_layers, generate_response_with_meta
 from core.reproducibility import set_seed
 from core.sweep import run_grid_sweep
 from steering.psr.data import load_or_pool_prompt_last_token
 from steering.psr.gate import forward_with_gate_hook, init_gate_state
+from steering.psr.reference_config import (
+    DEFAULT_LOSS_BALANCE,
+    N_EPOCHS_MSE,
+    WEIGHT_DECAY as REF_WEIGHT_DECAY,
+    epochs_for,
+    loss_balance,
+)
 from steering.psr.training_loop import train_gate
+from adapters.registry import TASK_CHOICES
 
-N_EPOCHS = 3
+N_EPOCHS = N_EPOCHS_MSE  # reference: 15 for MSE, 7 for LL -- see epochs_for()
 LR = float(os.environ.get("PSR_SG_LR", 1e-3))
-WEIGHT_DECAY = 1e-4
-REG_COEFF = float(os.environ.get("PSR_SG_REG_COEFF", 0.1))
+WEIGHT_DECAY = REF_WEIGHT_DECAY  # 1e-6; the reference's dataclass default of 1e-4 is never used
+LOSS_BALANCE = os.environ.get("PSR_SG_LOSS_BALANCE", DEFAULT_LOSS_BALANCE)
+REG_COEFF = float(os.environ.get("PSR_SG_REG_COEFF", loss_balance(LOSS_BALANCE)["reg_coeff"]))
+NORMALIZE_PSI = loss_balance(LOSS_BALANCE)["normalize_psi"]
 MSE_WEIGHT = float(os.environ.get("PSR_SG_MSE_WEIGHT", 1.0))
 NLL_WEIGHT = float(os.environ.get("PSR_SG_NLL_WEIGHT", 0.0))
 OUT_TAG = os.environ.get("PSR_SG_OUT_TAG", "")
@@ -84,18 +94,23 @@ def train_one_config(
     model, tokenizer, layer_idx: int, seed: int, n_layers: int, hidden_size: int, device: str,
     train_items: list[dict], dev_items: list[dict], train_responses: dict, dev_responses: dict,
     cache_dir, lr: float = LR, weight_decay: float = WEIGHT_DECAY, reg_coeff: float = REG_COEFF,
-    n_epochs: int = N_EPOCHS, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
+    n_epochs: int | None = None, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
+    normalize_psi: bool = NORMALIZE_PSI,
     on_epoch_end=None,
 ) -> dict:
     """Trains the gate on top of a frozen direction. Same return contract as proper/conceptor's
     train_one_config: JSON-safe dev metrics plus the trained tensors in one dict."""
+    # Reference epoch budget is objective-dependent (15 MSE / 7 LL). Training both endpoints
+    # for the same number of epochs confounds 'which objective wins' with 'which converged'.
+    if n_epochs is None:
+        n_epochs = epochs_for(mse_weight, nll_weight)
     set_seed(seed)
     gate = init_gate_state(hidden_size, device)
     direction = build_direction(model, tokenizer, train_items, layer_idx, cache_dir, device)
 
     # Only the gate's parameters go to the optimizer -- `direction` is frozen. This single line is
     # the entire difference from S-PSR, which additionally passes [direction] here.
-    optimizer = torch.optim.Adam(gate.parameters(), lr=lr, weight_decay=weight_decay)
+    optimizer = torch.optim.AdamW(gate.parameters(), lr=lr, weight_decay=weight_decay)
 
     forward_fn = lambda pair: forward_with_gate_hook(
         model, gate, direction, layer_idx, pair["full_base"], pair["n_resp"]
@@ -105,8 +120,10 @@ def train_one_config(
         model, tokenizer, forward_fn, optimizer, layer_idx, n_layers,
         train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
         mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
+        normalize_psi=normalize_psi,
     )
     return {
+        "completed_epochs": n_epochs,
         "baseline_mse": baseline_metrics["mse"], "baseline_nll": baseline_metrics["nll"],
         "final_mse": final_metrics["mse"], "final_nll": final_metrics["nll"],
         "weight": gate.weight.detach().cpu(), "bias": gate.bias.detach().cpu(),
@@ -123,8 +140,8 @@ def _setup(task: str, device: str):
         p.requires_grad_(False)
     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
+    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
+    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
     return adapter, model, tokenizer, num_layers(model), train_items, dev_items, train_responses, dev_responses
 
 
@@ -134,7 +151,8 @@ def _save(out_path, result: dict, layer_idx: int, task: str, mse_weight: float, 
     torch.save({
         "weight": result["weight"], "bias": result["bias"], "coeff_bias": result["coeff_bias"],
         "direction": result["direction"], "layer": layer_idx, "task": task,
-        "mse_weight": mse_weight, "nll_weight": nll_weight, "completed_epochs": N_EPOCHS,
+        "mse_weight": mse_weight, "nll_weight": nll_weight,
+        "completed_epochs": result["completed_epochs"],
     }, out_path)
 
 
@@ -210,7 +228,7 @@ def sweep(task: str, layers: list[int] | None = None, loss_config_grid: list[dic
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
+    parser.add_argument("--task", required=True, choices=TASK_CHOICES)
     parser.add_argument("--layer", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--sweep", action="store_true")

@@ -40,6 +40,7 @@ from evals.layer_hparam_search import (
 )
 from evals.registry import get_eval_adapter
 from steering.batch_routing import generate_batched_uniform
+from adapters.registry import TASK_CHOICES
 
 # variant -> (tiered-search stems to look for, functional form)
 PARENTS = {
@@ -203,7 +204,7 @@ def judge_saved(task: str) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--task", default="caveman", choices=["caveman", "ifeval"])
+    ap.add_argument("--task", default="caveman", choices=TASK_CHOICES)
     ap.add_argument("--variants", default="stolfo,const",
                      help=f"comma-separated, from: {', '.join(PARENTS)}")
     ap.add_argument("--n", type=int, default=180)

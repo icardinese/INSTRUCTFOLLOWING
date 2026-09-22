@@ -25,6 +25,7 @@ from steering.psr.conceptor.rank_diagnostic import participation_ratio
 from steering.psr.conceptor.selfproj.logic import make_inference_hook as selfproj_inference_hook
 from steering.psr.gate import GateState, make_inference_hook
 from steering.psr.old_baseline import MultiLayerPSRProbe, make_multi_psr_hooks
+from adapters.registry import TASK_CHOICES
 
 
 def load_const_condition(adapter, device):
@@ -216,7 +217,7 @@ def main(task: str, split: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
+    parser.add_argument("--task", required=True, choices=TASK_CHOICES)
     parser.add_argument("--split", default="test")
     args = parser.parse_args()
     main(args.task, args.split)

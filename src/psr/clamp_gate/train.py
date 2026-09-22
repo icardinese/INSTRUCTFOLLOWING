@@ -42,20 +42,30 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from adapters.registry import get_adapter
 from core.generation_cache import load_or_compute_responses
-from core.model_common import generate_response, load_model, num_layers
+from core.model_common import generate_response, load_model, num_layers, generate_response_with_meta
 from core.reproducibility import set_seed
 from core.sweep import run_grid_sweep
 from steering.clamp.hooks import forward_with_gated_clamp_hook, forward_with_multi_gated_clamp_hook
 from steering.const.direction import compute_diff_mean_direction
 from steering.psr.data import load_or_pool_prompt_last_token_all_layers
 from steering.psr.gate import init_gate_state
+from steering.psr.reference_config import (
+    DEFAULT_LOSS_BALANCE,
+    N_EPOCHS_MSE,
+    WEIGHT_DECAY as REF_WEIGHT_DECAY,
+    epochs_for,
+    loss_balance,
+)
 from steering.psr.training_loop import train_gate
 from steering.stolfo.direction import compute_target_projection
+from adapters.registry import TASK_CHOICES
 
-N_EPOCHS = 3
+N_EPOCHS = N_EPOCHS_MSE  # reference: 15 for MSE, 7 for LL -- see epochs_for()
 LR = float(os.environ.get("PSR_CLAMP_LR", 1e-3))
-WEIGHT_DECAY = 1e-4
-REG_COEFF = float(os.environ.get("PSR_CLAMP_REG_COEFF", 0.1))
+WEIGHT_DECAY = REF_WEIGHT_DECAY  # 1e-6; the reference's dataclass default of 1e-4 is never used
+LOSS_BALANCE = os.environ.get("PSR_CLAMP_LOSS_BALANCE", DEFAULT_LOSS_BALANCE)
+REG_COEFF = float(os.environ.get("PSR_CLAMP_REG_COEFF", loss_balance(LOSS_BALANCE)["reg_coeff"]))
+NORMALIZE_PSI = loss_balance(LOSS_BALANCE)["normalize_psi"]
 MSE_WEIGHT = float(os.environ.get("PSR_CLAMP_MSE_WEIGHT", 1.0))
 NLL_WEIGHT = float(os.environ.get("PSR_CLAMP_NLL_WEIGHT", 0.0))
 
@@ -83,9 +93,14 @@ def train_one_config(
     model, tokenizer, layer_indices: list[int], seed: int, n_layers: int, hidden_size: int,
     device: str, train_items: list[dict], dev_items: list[dict], train_responses: dict,
     dev_responses: dict, cache_dir, lr: float = LR, weight_decay: float = WEIGHT_DECAY,
-    reg_coeff: float = REG_COEFF, n_epochs: int = N_EPOCHS,
+    reg_coeff: float = REG_COEFF, n_epochs: int | None = None,
+    normalize_psi: bool = NORMALIZE_PSI,
     mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT, on_epoch_end=None,
 ) -> dict:
+    # Reference epoch budget is objective-dependent (15 MSE / 7 LL). Training both endpoints
+    # for the same number of epochs confounds 'which objective wins' with 'which converged'.
+    if n_epochs is None:
+        n_epochs = epochs_for(mse_weight, nll_weight)
     set_seed(seed)
     gates = {l: init_gate_state(hidden_size, device) for l in layer_indices}
     directions, targets = build_clamp_params(
@@ -93,7 +108,7 @@ def train_one_config(
 
     # Gates only -- directions and targets are closed-form and frozen.
     params = [p for l in layer_indices for p in gates[l].parameters()]
-    optimizer = torch.optim.Adam(params, lr=lr, weight_decay=weight_decay)
+    optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=weight_decay)
 
     if len(layer_indices) == 1:
         l = layer_indices[0]
@@ -111,8 +126,10 @@ def train_one_config(
         model, tokenizer, forward_fn, optimizer, mse_from, n_layers,
         train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
         mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped,
+        normalize_psi=normalize_psi,
     )
     return {
+        "completed_epochs": n_epochs,
         "baseline_mse": baseline_metrics["mse"], "baseline_nll": baseline_metrics["nll"],
         "final_mse": final_metrics["mse"], "final_nll": final_metrics["nll"],
         "gates": {l: {"weight": gates[l].weight.detach().cpu(), "bias": gates[l].bias.detach().cpu(),
@@ -131,7 +148,7 @@ def _save(path, result, layer_indices, task, mse_weight, nll_weight):
         "gates": result["gates"], "directions": result["directions"], "targets": result["targets"],
         "layer_indices": layer_indices, "direction_source": "clamp_dim",
         "task": task, "mse_weight": mse_weight, "nll_weight": nll_weight,
-        "completed_epochs": N_EPOCHS,
+        "completed_epochs": result["completed_epochs"],
     }, path)
 
 
@@ -144,8 +161,8 @@ def _setup(task, device):
         p.requires_grad_(False)
     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
-    tr = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
-    dv = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
+    tr = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
+    dv = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
     return adapter, model, tokenizer, num_layers(model), train_items, dev_items, tr, dv
 
 
@@ -177,7 +194,7 @@ def sweep(task, layers=None, loss_config_grid=None, seed=42, device="cuda"):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--task", required=True, choices=["caveman", "ifeval"])
+    ap.add_argument("--task", required=True, choices=TASK_CHOICES)
     ap.add_argument("--layers", type=str, default=None,
                      help="comma-separated. One layer = SG+Clamp; omit = MG+Clamp (all layers)")
     ap.add_argument("--seed", type=int, default=42)

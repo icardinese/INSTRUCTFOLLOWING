@@ -11,10 +11,11 @@ import torch
 import torch.nn.functional as F
 
 from adapters.registry import get_adapter
-from core.generation_cache import load_or_compute_responses
-from core.model_common import generate_response, layer_indices_from_fractions, load_model
+from core.generation_cache import load_or_compute_responses, response_text
+from core.model_common import generate_response, layer_indices_from_fractions, load_model, generate_response_with_meta
 from core.reproducibility import set_seed
 from steering.psr.old_baseline import MultiLayerPSRProbe
+from adapters.registry import TASK_CHOICES
 
 N_EPOCHS = 200
 LR = 1e-3
@@ -27,7 +28,7 @@ def collect_fixed_pairs_all_layers(model, tokenizer, items: list[dict], layer_in
     xs = {l: [] for l in layer_indices}
     ys = {l: [] for l in layer_indices}
     for item in items:
-        teacher_response = responses[str(item["id"])]
+        teacher_response = response_text(responses[str(item["id"])])
         resp_ids = tokenizer(teacher_response, return_tensors="pt", add_special_tokens=False)["input_ids"].to(model.device)
         if resp_ids.shape[1] == 0:
             continue
@@ -65,8 +66,8 @@ def main(task: str, seed: int = 42) -> None:
     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
 
-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
+    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
+    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
 
     print("collecting fixed (x, y) pairs at every candidate layer (offline, one pass per row)")
     x_train, y_train = collect_fixed_pairs_all_layers(model, tokenizer, train_items, layer_indices, train_responses)
@@ -129,7 +130,7 @@ def main(task: str, seed: int = 42) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
+    parser.add_argument("--task", required=True, choices=TASK_CHOICES)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
     main(args.task, args.seed)

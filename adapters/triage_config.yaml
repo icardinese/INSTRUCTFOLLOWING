@@ -1,0 +1,81 @@
+# Triage persona config. Mirrors the SLOT STRUCTURE of
+# langchain-ai/executive-ai-assistant/eaia/main/config.yaml exactly -- same slot names, same
+# roles, comparable token budgets -- but with contents rewritten for an Enron energy-trading
+# executive, because the corpus is Enron (AESLC) and the upstream config is LangChain-specific
+# (Ramp/Rewatch/Stripe, Goodwin Law, the LangChain board, Linda the product marketer). Applying
+# LangChain's rules to 2001 gas-scheduling email would make the triage decisions arbitrary.
+#
+# DESIGN CONSTRAINT: the rules below key off SUBJECT LINE AND BODY CONTENT, never off sender
+# identity. AESLC preserves the email body and subject but drops the From/To headers, so any rule
+# of the form "emails from our lawyers" would be unevaluable. Rewriting around content cues keeps
+# every rule actually applicable to the data. See adapters/triage_adapter.py for how {author} and
+# {to} are filled.
+#
+# Token budgets (Qwen2.5 tokenizer, approximate) are matched to upstream so the substitution task
+# is comparably demanding:
+#   background ~31 | triage_no ~177 | triage_email ~408 | triage_notify ~196 | fewshot ~625
+
+full_name: Sally Beck
+name: Sally
+background: >-
+  Sally is Chief Operating Officer of Enron Global Markets, overseeing risk management,
+  trade confirmation, and settlement operations across the gas and power desks.
+
+triage_no: |
+  - Automated system notifications: nightly batch reports, database refresh confirmations, and scheduled feed status messages
+  - Mass distribution announcements sent to the whole company, such as building maintenance, parking, cafeteria menus, and holiday schedules
+  - Threads where the question is squarely addressed to someone else on the copy line and Sally is only cc'd for awareness. She is often copied on desk-level scheduling traffic she does not need to answer. The exception is when she sent the most recent message in the thread, which usually means she is driving the conversation
+  - Routine confirmations that simply acknowledge receipt of something already agreed
+  - Newsletters, press clippings, and industry mailing-list digests
+
+triage_notify: |
+  - Documents shared for her records where no reply is expected, such as a finalized desk procedure or an executed agreement sent purely as a copy
+  - Items that state a deadline or a required signature but ask nothing of her yet. If the message indicates the item is already signed or already completed, she does not need to be notified
+  - Technically detailed questions about position reporting, curve validation, or settlement methodology. She likes to see these even when a desk analyst will answer them
+  - Messages containing a clear action item for Sally arising from a conversation she has already had, such as adding a name to a distribution list or approving an access request
+
+triage_email: |
+  - Messages that ask Sally a direct question about risk policy, position limits, or trade approval
+  - Messages where a counterparty or an external party raises a discrepancy in a confirmation, an invoice, or a settlement amount
+  - Messages where a meeting has been scheduled for Sally and she has not yet acknowledged it
+  - Messages where Sally is the main driver of the conversation, which is usually visible when the thread is waiting on a decision only she can make
+  - Messages from desk heads or controllers that explicitly ask her to weigh in, approve, or arbitrate
+  - Messages where Sally has just been added to an existing thread and has not yet introduced herself
+  - Messages where Sally is connecting two parties who need to work together. If she has already made the introduction, she does not need to respond again unless someone asks her something directly
+  - Messages proposing a time to meet, where the sender is waiting on her availability
+  - Messages raising a control failure, a limit breach, or an audit finding
+  - Messages that reference a prior conversation or commitment of hers and are following up on it
+
+  Reminder - automated calendar invitations do NOT count as real emails
+
+# Static few-shot block. Upstream retrieves these dynamically from a LangGraph store populated by
+# the operator's own corrections (eaia/main/fewshot.py::get_few_shot_examples). There is no such
+# store here, so the block is fixed -- which is strictly better for this experiment, since a
+# retrieval-dependent slot would vary per item and confound the base/instructed contrast.
+# Rendered into {fewshotexamples} using upstream's exact template from fewshot.py.
+fewshot_examples:
+  - subject: "Nightly position feed completed"
+    from_email: "operations@enron.com"
+    to_email: "sally.beck@enron.com"
+    content: "The overnight position feed finished at 03:14 with no exceptions. All books reconciled. This is an automated message."
+    result: "no"
+  - subject: "Confirm discrepancy - Aquila Nov gas"
+    from_email: "settlements@aquila.com"
+    to_email: "sally.beck@enron.com"
+    content: "Our confirmation for the November baseload shows 5,000 MMBtu/day but your ticket shows 4,500. Can you confirm which is correct so we can settle? We need this resolved before month end."
+    result: "email"
+  - subject: "Executed - desk procedure v4"
+    from_email: "compliance@enron.com"
+    to_email: "sally.beck@enron.com"
+    content: "Attaching the fully executed version of the revised gas desk procedure for your records. No action needed, sending for your file."
+    result: "notify"
+  - subject: "Re: curve validation methodology"
+    from_email: "analyst@enron.com"
+    to_email: "risk-team@enron.com"
+    content: "Following up on the forward curve question - I think the interpolation on the back end is what's driving the variance. Mark, can you pull the last 30 days and check?"
+    result: "notify"
+  - subject: "Limit breach - West power book"
+    from_email: "controller@enron.com"
+    to_email: "sally.beck@enron.com"
+    content: "The West power book went over its VaR limit at close yesterday and is still over this morning. I need your sign-off on either a reduction plan or a temporary limit increase today."
+    result: "email"

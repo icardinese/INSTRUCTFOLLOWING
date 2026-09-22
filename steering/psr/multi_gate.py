@@ -95,13 +95,14 @@ def make_multi_inference_hooks(
     gates: dict[int, GateState],
     directions: dict[int, torch.Tensor],
     layer_indices: list[int],
+    prefill_tail: int = 1,
 ) -> dict[int, callable]:
     """Inference-time counterpart, shaped for steering.hooks.multi_steering_hook (which takes a
     {layer_idx: hook_fn} dict). Mirrors steering/psr/gate.py's make_inference_hook exactly,
-    including its prefill-vs-decode distinction: seq_len > 1 means we're processing the prompt
-    (don't steer), seq_len == 1 means the single new token IS the response by construction (always
-    steer) -- the same is_generating logic Nokia's FocusedSteeringModule.forward uses, adapted to
-    HF's KV-cached generation loop.
+    including its prefill handling -- see that function's docstring for why prefill steers the
+    final prompt token rather than being skipped. The two must stay identical: a divergence here
+    would make A-PSR and S-PSR incomparable at inference for reasons unrelated to the
+    architecture under test.
 
     No torch.no_grad() decorator here on purpose -- make_inference_hook has one, but it's applied
     at the hook level there; callers of this function are expected to already be inside
@@ -113,7 +114,15 @@ def make_multi_inference_hooks(
         def _make_hook(gate: GateState, direction: torch.Tensor):
             def hook_fn(hidden: torch.Tensor) -> torch.Tensor:
                 if hidden.shape[1] > 1:
-                    return hidden
+                    # Prefill: steer the trailing `prefill_tail` positions (1 == R, question
+                    # span == QR). Left padding right-aligns rows, so counting from the right
+                    # is valid for every row of a batch.
+                    k = min(prefill_tail, hidden.shape[1])
+                    tail = hidden[:, -k:, :]
+                    coeff, _ = coefficient(gate, tail, mask=None)
+                    out = hidden.clone()
+                    out[:, -k:, :] = tail + (coeff * direction.to(hidden.dtype)).to(hidden.dtype)
+                    return out
                 coeff, _ = coefficient(gate, hidden, mask=None)
                 return hidden + (coeff * direction.to(hidden.dtype)).to(hidden.dtype)
 

@@ -25,6 +25,7 @@ from core.model_common import (
 from steering.const.direction import compute_diff_mean_direction
 from steering.const.hooks import make_const_hook
 from steering.hooks import steering_hook
+from adapters.registry import TASK_CHOICES
 
 COEFF_GRID = [2, 4, 6, 8, 10, 12, 16, 20, 24, 28]
 
@@ -103,6 +104,6 @@ def main(task: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
+    parser.add_argument("--task", required=True, choices=TASK_CHOICES)
     args = parser.parse_args()
     main(args.task)

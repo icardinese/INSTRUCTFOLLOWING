@@ -33,6 +33,7 @@ from evals.layer_hparam_search import build_search_context, load_existing_tiered
 from steering.const.direction import compute_diff_mean_direction
 from steering.psr.data import load_or_pool_prompt_last_token
 from steering.stolfo.direction import compute_target_projection
+from adapters.registry import TASK_CHOICES
 
 
 def cos(a: torch.Tensor, b: torch.Tensor) -> float:
@@ -245,6 +246,6 @@ def main(task: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", default="caveman", choices=["caveman", "ifeval"])
+    parser.add_argument("--task", default="caveman", choices=TASK_CHOICES)
     args = parser.parse_args()
     main(args.task)

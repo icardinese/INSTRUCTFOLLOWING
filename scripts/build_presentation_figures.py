@@ -41,6 +41,7 @@ import numpy as np
 
 from evals.bootstrap_analysis import bootstrap_ci, paired_bootstrap_diff
 from inventory import ALIASES, collect, is_degenerate
+from adapters.registry import TASK_CHOICES
 
 # ---------------------------------------------------------------- encoding
 
@@ -728,7 +729,7 @@ def main(task: str, no_ci: bool) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--task", default="caveman", choices=["caveman", "ifeval"])
+    ap.add_argument("--task", default="caveman", choices=TASK_CHOICES)
     ap.add_argument("--no-ci", action="store_true",
                      help="also write a CI-free variant of the main frontier")
     a = ap.parse_args()

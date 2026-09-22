@@ -9,6 +9,7 @@ from collections import defaultdict
 
 from adapters.registry import get_adapter
 from evals.registry import get_eval_adapter
+from adapters.registry import TASK_CHOICES
 
 # Raw {cond}_{suffix} key -> the display field name it's aggregated under. Distinct from
 # score_fields (which come from the task's judge and vary per task) -- these are METHOD-level
@@ -87,7 +88,7 @@ def main(task: str, split: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
+    parser.add_argument("--task", required=True, choices=TASK_CHOICES)
     parser.add_argument("--split", default="test")
     args = parser.parse_args()
     main(args.task, args.split)

@@ -36,6 +36,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
+from adapters.registry import TASK_CHOICES
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -230,7 +231,7 @@ def main(task: str, apply: bool, mode: str, do_keys: bool) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--task", default="caveman", choices=["caveman", "ifeval"])
+    ap.add_argument("--task", default="caveman", choices=TASK_CHOICES)
     ap.add_argument("--apply", action="store_true", help="actually do it (default is dry run)")
     ap.add_argument("--mode", default="copy", choices=["copy", "move"],
                      help="copy (safe, old names remain) or move (clean, needs the code rename)")

@@ -44,6 +44,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from evals.bootstrap_analysis import bootstrap_ci
+from adapters.registry import TASK_CHOICES
 
 GATES = ["NoGate", "SG", "MG"]
 # Clamp is a full column as of 2026-09-19: it was reported outside the grid while only the
@@ -455,5 +456,5 @@ def main(task: str) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--task", default="caveman", choices=["caveman", "ifeval"])
+    ap.add_argument("--task", default="caveman", choices=TASK_CHOICES)
     main(ap.parse_args().task)

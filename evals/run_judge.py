@@ -13,6 +13,7 @@ import json
 
 from adapters.registry import get_adapter
 from evals.registry import get_eval_adapter
+from adapters.registry import TASK_CHOICES
 
 
 def main(task: str, split: str) -> None:
@@ -68,7 +69,7 @@ def main(task: str, split: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
+    parser.add_argument("--task", required=True, choices=TASK_CHOICES)
     parser.add_argument("--split", default="test")
     args = parser.parse_args()
     main(args.task, args.split)

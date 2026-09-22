@@ -1,0 +1,76 @@
+################################################################
+# Overnight TRIAGE run starting at Tue Sep 22 08:36:59 AM UTC 2026
+# Log: results/triage/overnight_20260922_083659.log
+# max_batch_rows=11 (default 11 for triage, NOT the library default of 60 --
+#   60 would sit at 1.02x the OOM measured on an 80GB A100; see the comment in this script)
+################################################################
+
+== pre-flight checks ==
+gold labels: found for train/dev/test
+  train: n=180 dist={'no': 117, 'notify': 19, 'email': 44} majority-baseline=65.0%
+  dev: n=60 dist={'no': 37, 'email': 15, 'notify': 8} majority-baseline=61.7%
+  test: n=180 dist={'no': 116, 'notify': 28, 'email': 36} majority-baseline=64.4%
+CUDA: available
+core dependencies: importable
+-- smoke test: one triage training point (catches OOM at QR's ~2.4k-token span) --
+smoke test: PASSED (one point trained end to end)
+pre-flight checks passed -- proceeding.
+
+== [2026-09-22 08:59:58] START: S-PSR / PSR-Proper sweep (layer x loss-config) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:02,  1.85it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.69it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 34.36it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:06, 51.26it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 63.72it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 73.10it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 79.86it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 84.57it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 88.10it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 90.72it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.43it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 93.86it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 94.71it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 95.20it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 95.50it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.89it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 96.15it/s]Loading weights:  58%|█████▊    | 197/339 [00:02<00:01, 93.99it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 97.03it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.70it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.91it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.98it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 97.26it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 97.29it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 97.34it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 97.46it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 97.42it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 97.33it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 97.25it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 84.40it/s]
+>>> resuming sweep: 1 grid point(s) already in results/triage/psr_proper_sweep.jsonl
+layer=2 mse_weight=1.0 nll_weight=0.0 final_mse=13.6086 final_nll=1.0886
+layer=2 mse_weight=0.0 nll_weight=1.0 final_mse=45.7357 final_nll=0.7680
+layer=4 mse_weight=1.0 nll_weight=0.0 final_mse=13.3373 final_nll=1.0737
+layer=4 mse_weight=0.0 nll_weight=1.0 final_mse=45.7237 final_nll=0.7540
+layer=6 mse_weight=1.0 nll_weight=0.0 final_mse=13.0994 final_nll=1.0698
+layer=6 mse_weight=0.0 nll_weight=1.0 final_mse=45.5201 final_nll=0.7404
+layer=8 mse_weight=1.0 nll_weight=0.0 final_mse=12.7154 final_nll=1.0692
+layer=8 mse_weight=0.0 nll_weight=1.0 final_mse=43.9623 final_nll=0.7294
+layer=10 mse_weight=1.0 nll_weight=0.0 final_mse=12.2497 final_nll=1.0609
+layer=10 mse_weight=0.0 nll_weight=1.0 final_mse=43.9725 final_nll=0.7244
+layer=12 mse_weight=1.0 nll_weight=0.0 final_mse=11.9054 final_nll=1.0642
+layer=12 mse_weight=0.0 nll_weight=1.0 final_mse=41.9792 final_nll=0.7181
+layer=14 mse_weight=0.0 nll_weight=1.0 final_mse=40.0831 final_nll=0.7162
+layer=16 mse_weight=1.0 nll_weight=0.0 final_mse=11.9321 final_nll=1.0717
+layer=16 mse_weight=0.0 nll_weight=1.0 final_mse=42.8075 final_nll=0.7142
+layer=18 mse_weight=1.0 nll_weight=0.0 final_mse=12.3574 final_nll=1.0836
+layer=18 mse_weight=0.0 nll_weight=1.0 final_mse=49.6108 final_nll=0.7174
+layer=20 mse_weight=1.0 nll_weight=0.0 final_mse=13.1554 final_nll=1.1077
+layer=20 mse_weight=0.0 nll_weight=1.0 final_mse=57.9119 final_nll=0.7173
+layer=22 mse_weight=1.0 nll_weight=0.0 final_mse=13.0602 final_nll=1.1379
+layer=22 mse_weight=0.0 nll_weight=1.0 final_mse=67.6154 final_nll=0.7172
+layer=24 mse_weight=1.0 nll_weight=0.0 final_mse=10.8406 final_nll=1.1449
+layer=24 mse_weight=0.0 nll_weight=1.0 final_mse=59.0473 final_nll=0.7303
+layer=26 mse_weight=1.0 nll_weight=0.0 final_mse=5.6267 final_nll=1.1324
+layer=26 mse_weight=0.0 nll_weight=1.0 final_mse=8.7477 final_nll=0.7624
+
+wrote 26 sweep rows to results/triage/psr_proper_sweep.jsonl
+wrote results/triage/psr_proper_probe.pt (best layer=26, mse_weight=1.0, nll_weight=0.0, final_mse=5.6267)
+== [2026-09-22 12:29:08] OK: S-PSR / PSR-Proper sweep (layer x loss-config) ==
+
+== [2026-09-22 12:29:08] START: SG single-gate sweep (layer x loss-config) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:23,  4.04it/s]Loading weights:   1%|          | 2/339 [00:00<01:32,  3.63it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.81it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 36.10it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 53.40it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 65.68it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 74.48it/s]Loading weights:  19%|█▉        | 65/339 [00:01<00:03, 78.46it/s]Loading weights:  22%|██▏       | 76/339 [00:01<00:03, 81.37it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 89.91it/s]Loading weights:  29%|██▉       | 100/339 [00:01<00:02, 87.07it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 94.34it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 94.84it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 95.20it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 95.28it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 95.53it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.60it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 95.85it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.82it/s]Loading weights:  62%|██████▏   | 209/339 [00:02<00:01, 93.93it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.82it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.86it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.87it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.49it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.79it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.98it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 97.00it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 97.03it/s]Loading weights:  93%|█████████▎| 316/339 [00:03<00:00, 92.37it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 98.52it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.92it/s]
+layer=2 mse_weight=1.0 nll_weight=0.0 final_mse=19.1223 final_nll=1.1547
+layer=2 mse_weight=0.0 nll_weight=1.0 final_mse=19.7318 final_nll=1.1366
+layer=4 mse_weight=1.0 nll_weight=0.0 final_mse=19.1162 final_nll=1.1570
+layer=4 mse_weight=0.0 nll_weight=1.0 final_mse=20.3255 final_nll=1.1389
+layer=6 mse_weight=1.0 nll_weight=0.0 final_mse=19.0124 final_nll=1.1613
+layer=6 mse_weight=0.0 nll_weight=1.0 final_mse=19.4151 final_nll=1.1462
+layer=8 mse_weight=1.0 nll_weight=0.0 final_mse=18.7447 final_nll=1.1628
+layer=8 mse_weight=0.0 nll_weight=1.0 final_mse=19.5436 final_nll=1.1400
+layer=10 mse_weight=1.0 nll_weight=0.0 final_mse=18.5232 final_nll=1.1571
+layer=10 mse_weight=0.0 nll_weight=1.0 final_mse=19.2948 final_nll=1.1334
+layer=12 mse_weight=1.0 nll_weight=0.0 final_mse=18.4333 final_nll=1.1602
+layer=12 mse_weight=0.0 nll_weight=1.0 final_mse=19.1935 final_nll=1.1373
+layer=14 mse_weight=1.0 nll_weight=0.0 final_mse=17.9963 final_nll=1.1597
+layer=14 mse_weight=0.0 nll_weight=1.0 final_mse=18.8450 final_nll=1.1339
+layer=16 mse_weight=1.0 nll_weight=0.0 final_mse=17.8929 final_nll=1.1671
+layer=16 mse_weight=0.0 nll_weight=1.0 final_mse=18.6261 final_nll=1.1411
+layer=18 mse_weight=1.0 nll_weight=0.0 final_mse=17.2031 final_nll=1.1663
+layer=18 mse_weight=0.0 nll_weight=1.0 final_mse=17.8499 final_nll=1.1449
+layer=20 mse_weight=1.0 nll_weight=0.0 final_mse=16.6537 final_nll=1.1501
+layer=20 mse_weight=0.0 nll_weight=1.0 final_mse=18.0486 final_nll=1.1302
+layer=22 mse_weight=1.0 nll_weight=0.0 final_mse=15.2326 final_nll=1.1520

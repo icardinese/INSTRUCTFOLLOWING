@@ -36,6 +36,7 @@ import matplotlib.pyplot as plt
 
 from adapters.registry import get_adapter
 from evals.bootstrap_analysis import bootstrap_ci, paired_bootstrap_diff
+from adapters.registry import TASK_CHOICES
 
 # Logical display order and short labels. Baselines, then steering-alone, then Prompt+steering --
 # so the eye moves through the three regimes instead of alphabetical noise.
@@ -195,6 +196,6 @@ def main(task: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", default="caveman", choices=["caveman", "ifeval"])
+    parser.add_argument("--task", default="caveman", choices=TASK_CHOICES)
     args = parser.parse_args()
     main(args.task)

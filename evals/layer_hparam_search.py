@@ -33,11 +33,12 @@ import torch
 
 from adapters.registry import get_adapter
 from core.generation_cache import load_or_compute_responses
-from core.model_common import generate_response, load_model, num_layers
+from core.model_common import generate_response, load_model, num_layers, generate_response_with_meta
 from evals.bootstrap_analysis import bootstrap_ci, paired_bootstrap_diff
 from evals.registry import get_eval_adapter
 from steering.batch_routing import generate_with_routed_configs
 from steering.psr.gate import GateState
+from adapters.registry import TASK_CHOICES
 
 DEFAULT_TIER1_N = 20
 DEFAULT_TIER2_N = 20
@@ -387,7 +388,7 @@ def evaluate_candidates(
     split: str = "dev",
     max_batch_rows: int = DEFAULT_MAX_BATCH_ROWS,
     optimize_field: str | None = None,
-    primary_field_max: float = DEFAULT_PRIMARY_FIELD_MAX,
+    primary_field_max: float | None = None,
 ) -> list[dict]:
     """Retrains every candidate, then batches them into generate_with_routed_configs calls --
     as many candidates per call as fit within max_batch_rows total prompt-rows, chunked into
@@ -457,6 +458,10 @@ def evaluate_candidates(
         chunk_responses = generate_with_routed_configs(ctx.model, ctx.tokenizer, chunk_prompts, chunk_hooks, chunk_layers)
         responses_by_group.update(chunk_responses)
 
+    # None means "ask the task" -- caveman judges 0/1/2, ifeval and triage are both 0/1, so a
+    # single hardcoded max made fully_correct_rate identically zero for the latter two.
+    if primary_field_max is None:
+        primary_field_max = _primary_field_max_for(eval_adapter)
     primary_field = eval_adapter.SCORE_FIELDS[0]
     resolved_optimize_field = optimize_field
     if resolved_optimize_field is None and "conciseness" in eval_adapter.SCORE_FIELDS:
@@ -496,7 +501,13 @@ def evaluate_candidates(
     return mark_pareto_frontier(results)
 
 
-def select_constrained_survivors(results: list[dict], top_k: int) -> list[dict]:
+RANK_BY_AVG_TOKENS = "avg_tokens"
+RANK_BY_PRIMARY_DESC = "primary_desc"
+RANK_BY_CHOICES = (RANK_BY_AVG_TOKENS, RANK_BY_PRIMARY_DESC)
+
+
+def select_constrained_survivors(results: list[dict], top_k: int,
+                                 rank_by: str = RANK_BY_AVG_TOKENS) -> list[dict]:
     """Constrained optimization, not a single blended metric, with TWO gates that are NOT
     symmetric in how strictly they're enforced:
 
@@ -515,7 +526,22 @@ def select_constrained_survivors(results: list[dict], top_k: int) -> list[dict]:
         real accuracy floor), and flag it -- callers can tell a fallback happened via each
         returned result's `prompt_floor_fallback` key.
 
-    RANKING KEY among gate-2 survivors, changed 2026-09-17: avg_tokens (ascending -- fewer wins)
+    RANKING AXIS IS TASK-DECLARED (rank_by), read from the eval adapter's RANK_BY. This is not a
+    style preference -- the right axis is a property of the task, and using the wrong one silently
+    selects on something unrelated to the instruction being studied:
+
+      - "avg_tokens" (caveman ONLY): caveman's instruction is ABOUT brevity, so output length IS
+        its compliance signal and fewer tokens legitimately wins. Rationale below.
+      - "primary_desc" (ifeval, triage): descending on the primary judged field. Neither task has
+        a length dimension -- IFEval's instruction is a format constraint and triage's is a
+        classification rule. Ranking either by avg_tokens would pick whichever variant emitted the
+        least text, which for triage means preferring the SHORTEST REASONING and actively
+        rewarding degenerate early-stopping output.
+
+    Before 2026-09-22 this function ranked by avg_tokens unconditionally, which was correct for
+    the only task that then existed and wrong for both tasks added since.
+
+    THE avg_tokens RATIONALE (caveman): avg_tokens (ascending -- fewer wins)
     is now PRIMARY, optimize_score (judged conciseness, descending) only breaks a literal tie in
     avg_tokens, which given a continuous token count essentially never happens. This supersedes an
     optimize_score-primary ranking that shipped originally, caught wrong by two separate real
@@ -552,8 +578,17 @@ def select_constrained_survivors(results: list[dict], top_k: int) -> list[dict]:
             continue
         prompt_gate_survivors.append(r)
 
+    if rank_by not in RANK_BY_CHOICES:
+        raise ValueError(f"unknown rank_by {rank_by!r}; expected one of {list(RANK_BY_CHOICES)}")
+
     if prompt_gate_survivors:
-        winners = sorted(prompt_gate_survivors, key=lambda r: (r["avg_tokens"], -r["optimize_score"]))[:top_k]
+        if rank_by == RANK_BY_AVG_TOKENS:
+            key = lambda r: (r["avg_tokens"], -r["optimize_score"])  # noqa: E731
+        else:
+            # No length axis exists for this task. Rank on the judged primary field, breaking
+            # ties with the stricter fully-correct rate rather than anything length-derived.
+            key = lambda r: (-r["judged_score"], -r.get("fully_correct_rate", 0.0))  # noqa: E731
+        winners = sorted(prompt_gate_survivors, key=key)[:top_k]
         return [{**r, "prompt_floor_fallback": False} for r in winners]
 
     print("WARNING: no candidate beat or tied Prompt alone -- falling back to the highest "
@@ -561,6 +596,19 @@ def select_constrained_survivors(results: list[dict], top_k: int) -> list[dict]:
           "fallback, since it isn't safe to optimize for terseness with no accuracy floor met).")
     winners = sorted(grid_gate_survivors, key=lambda r: -r["judged_score"])[:top_k]
     return [{**r, "prompt_floor_fallback": True} for r in winners]
+
+
+def _rank_by_for(eval_adapter) -> str:
+    """The task's declared ranking axis. Defaults to avg_tokens -- the historical behaviour, and
+    correct for caveman -- so an adapter without RANK_BY is unchanged."""
+    return getattr(eval_adapter, "RANK_BY", RANK_BY_AVG_TOKENS)
+
+
+def _primary_field_max_for(eval_adapter) -> float:
+    """Top of the primary judged field's scale, needed by _fully_correct_rate. caveman judges
+    correctness 0/1/2; ifeval and triage are both 0/1, so using caveman's 2 for them made
+    fully_correct_rate always 0 (nothing ever equals 2)."""
+    return getattr(eval_adapter, "PRIMARY_FIELD_MAX", DEFAULT_PRIMARY_FIELD_MAX)
 
 
 def load_existing_tiered_results(out_path: Path) -> dict[str, list[dict]]:
@@ -592,8 +640,8 @@ def build_search_context(adapter, seed: int) -> SearchContext:
 
     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
+    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
+    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
     return SearchContext(
         model=model, tokenizer=tokenizer, n_layers=num_layers(model), hidden_size=model.config.hidden_size,
         cache_dir=adapter.CACHE_DIR, train_items=train_items, dev_items=dev_items,
@@ -648,7 +696,7 @@ def run_tiered_search(
         tier1_results = evaluate_candidates(variant, tier1_candidates, ctx, adapter, eval_adapter, tier1_n, split="dev", max_batch_rows=max_batch_rows)
         write("tier1", tier1_results)
 
-    survivors = select_constrained_survivors(tier1_results, top_k_layers)
+    survivors = select_constrained_survivors(tier1_results, top_k_layers, _rank_by_for(eval_adapter))
     if not survivors:
         print("WARNING: every Tier 1 candidate was skipped -- nothing to search further")
         return
@@ -670,7 +718,7 @@ def run_tiered_search(
         tier2_results = evaluate_candidates(variant, tier2_candidates, ctx, adapter, eval_adapter, tier2_n, split="dev", max_batch_rows=max_batch_rows)
         write("tier2", tier2_results)
 
-    winner_list = select_constrained_survivors(tier2_results, top_k=1)
+    winner_list = select_constrained_survivors(tier2_results, top_k=1, rank_by=_rank_by_for(eval_adapter))
     winner = winner_list[0] if winner_list else None
     if winner is None:
         print("WARNING: every Tier 2 candidate was skipped -- no final confirmation run")
@@ -767,7 +815,7 @@ def run_training_free_search(
         tier1_results = evaluate_candidates(variant, tier1_candidates, ctx, adapter, eval_adapter, tier1_n, split="dev", max_batch_rows=max_batch_rows)
         write("tier1", tier1_results)
 
-    winner_list = select_constrained_survivors(tier1_results, top_k=1)
+    winner_list = select_constrained_survivors(tier1_results, top_k=1, rank_by=_rank_by_for(eval_adapter))
     winner = winner_list[0] if winner_list else None
     if winner is None:
         print("WARNING: every Tier 1 candidate was skipped -- no final confirmation run")
@@ -840,7 +888,7 @@ def summarize_all_variants(task: str) -> dict:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
+    parser.add_argument("--task", required=True, choices=TASK_CHOICES)
     parser.add_argument("--variant", choices=list(RETRAIN_FNS.keys()), help="omit with --summarize to just aggregate every variant's results")
     parser.add_argument("--summarize", action="store_true", help="skip searching -- just read whatever *_tiered_search.jsonl files exist and print/write a comparison")
     parser.add_argument("--tier1-n", type=int, default=DEFAULT_TIER1_N)

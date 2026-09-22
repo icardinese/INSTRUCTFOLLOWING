@@ -17,9 +17,10 @@ import torch.nn.functional as F
 
 from adapters.registry import get_adapter
 from core.reproducibility import set_seed
-from core.generation_cache import load_or_compute_responses
-from core.model_common import generate_response, load_model
+from core.generation_cache import load_or_compute_responses, response_text
+from core.model_common import generate_response, load_model, generate_response_with_meta
 from steering.psr.old_baseline import PSRProbe
+from adapters.registry import TASK_CHOICES
 
 N_EPOCHS = 200
 LR = 1e-3
@@ -32,7 +33,7 @@ def collect_fixed_pairs(model, tokenizer, items: list[dict], layer_idx: int, res
     kept as-is here since replicating the original baseline faithfully is the whole point."""
     xs, ys = [], []
     for item in items:
-        teacher_response = responses[str(item["id"])]
+        teacher_response = response_text(responses[str(item["id"])])
         resp_ids = tokenizer(teacher_response, return_tensors="pt", add_special_tokens=False)["input_ids"].to(model.device)
         if resp_ids.shape[1] == 0:
             continue
@@ -70,8 +71,8 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
         with (adapter.RESULTS_DIR / "const_steer_config.json").open() as f:
             layer_idx = json.load(f)["layer"]
 
-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
+    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
+    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
 
     print(f"collecting fixed (x, y) pairs at layer {layer_idx} (offline, injection-layer only)")
     x_train, y_train = collect_fixed_pairs(model, tokenizer, train_items, layer_idx, train_responses)
@@ -125,7 +126,7 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
+    parser.add_argument("--task", required=True, choices=TASK_CHOICES)
     parser.add_argument("--layer", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()

@@ -24,9 +24,14 @@ from steering.psr.nll import response_nll
 from tests.fakes import make_fake_model_and_tokenizer
 
 
-def test_answer_only_mask_shape_and_values():
+def test_answer_only_mask_covers_last_prompt_token_plus_response():
+    """The steered span is n_resp + 1 positions, not n_resp. The reference's mask is
+    `token_positions >= last_input_token_position`, and that index is the LAST PROMPT TOKEN
+    (tokenization_utils.compute_last_input_token_index -> len(prompt_tokens) - 1), so `>=`
+    includes it. With seq_len=6 and n_resp=3 the response is positions 3,4,5 and the final
+    prompt token is position 2."""
     mask = answer_only_mask(seq_len=6, n_resp=3, device="cpu")
-    assert mask.tolist() == [[[False], [False], [False], [True], [True], [True]]]
+    assert mask.tolist() == [[[False], [False], [True], [True], [True], [True]]]
 
 
 def test_location_fit_matches_manual_relu_computation():
@@ -39,12 +44,14 @@ def test_location_fit_matches_manual_relu_computation():
 
 
 def test_coefficient_masking_zeroes_prompt_span():
+    """Everything strictly before the final prompt token is hard-zeroed; the final prompt token
+    and the response span both fire. See test_answer_only_mask_covers_last_prompt_token_plus_response."""
     gate = GateState(weight=torch.ones(16, 1) * 0.5, bias=torch.tensor([0.1]), coeff_bias=torch.tensor([0.0]))
     hidden = torch.ones(1, 6, 16)
     mask = answer_only_mask(6, 3, "cpu")
     coeff, fit = coefficient(gate, hidden, mask)
-    assert torch.all(fit[:, :3, :] == 0), "prompt-span positions should be hard-zeroed by the mask"
-    assert torch.all(fit[:, 3:, :] > 0), "response-span positions should be nonzero"
+    assert torch.all(fit[:, :2, :] == 0), "positions before the final prompt token should be hard-zeroed"
+    assert torch.all(fit[:, 2:, :] > 0), "final prompt token + response span should be nonzero"
 
 
 def test_regularization_penalizes_all_zero_gate():
@@ -150,11 +157,26 @@ def test_response_nll_matches_manual_shifted_cross_entropy():
 
     got = response_nll(logits, input_ids, n_resp, reduction="sum")
 
+    # Span is the last prompt token + the n_resp response tokens, matching answer_only_mask and
+    # the reference's label mask (`>= last_input_token_position`).
     expected = torch.zeros(())
-    for t in range(seq_len - n_resp, seq_len):
+    for t in range(seq_len - n_resp - 1, seq_len):
         log_probs = torch.log_softmax(logits[0, t - 1], dim=-1)
         expected = expected - log_probs[input_ids[0, t]]
     assert torch.allclose(got, expected, atol=1e-5)
+
+
+def test_response_nll_mean_is_sum_over_span_length():
+    """Default reduction is "mean" (the reference computes this as HF's causal-LM loss, which is
+    mean-reduced) and the span is n_resp + 1 tokens."""
+    torch.manual_seed(4)
+    vocab, seq_len, n_resp = 10, 6, 3
+    logits = torch.randn(1, seq_len, vocab)
+    input_ids = torch.randint(0, vocab, (1, seq_len))
+
+    got_sum = response_nll(logits, input_ids, n_resp, reduction="sum")
+    got_mean = response_nll(logits, input_ids, n_resp)
+    assert torch.allclose(got_mean, got_sum / (n_resp + 1), atol=1e-5)
 
 
 def test_response_nll_lower_for_confident_correct_predictions():
@@ -166,14 +188,14 @@ def test_response_nll_lower_for_confident_correct_predictions():
     input_ids = torch.tensor([[3, 7, 1, 9, 15]])
 
     confident_logits = torch.full((1, seq_len, vocab), -10.0)
-    for t in range(seq_len - n_resp, seq_len):
+    for t in range(seq_len - n_resp - 1, seq_len):
         confident_logits[0, t - 1, input_ids[0, t]] = 10.0
     uniform_logits = torch.zeros(1, seq_len, vocab)
 
     confident_nll = response_nll(confident_logits, input_ids, n_resp, reduction="sum")
     uniform_nll = response_nll(uniform_logits, input_ids, n_resp, reduction="sum")
     assert confident_nll.item() < 1e-3
-    assert uniform_nll.item() > n_resp * (torch.log(torch.tensor(float(vocab))).item() - 0.01)
+    assert uniform_nll.item() > (n_resp + 1) * (torch.log(torch.tensor(float(vocab))).item() - 0.01)
 
 
 def test_response_nll_rejects_n_resp_larger_than_available_context():

@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from adapters.registry import get_adapter
 from evals.bootstrap_analysis import bootstrap_ci
+from adapters.registry import TASK_CHOICES
 
 SOURCE = "token_distributions.json"      # canonical record produced by scripts/regen_token_cis.py
 STATE = "batch_judge_state.json"         # batch ids + the custom_id manifest
@@ -215,7 +216,7 @@ def collect(task: str, allow_partial: bool) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--task", default="caveman", choices=["caveman", "ifeval"])
+    ap.add_argument("--task", default="caveman", choices=TASK_CHOICES)
     ap.add_argument("--submit", action="store_true")
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--collect", action="store_true")

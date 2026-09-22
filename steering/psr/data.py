@@ -5,14 +5,38 @@ contrastive training (task_matrix, projection) has no reason to import this.
 """
 import torch
 
+from core.generation_cache import normalize_cache_entry
 
-def build_training_pair(model, tokenizer, item: dict, responses: dict) -> dict | None:
+
+def build_training_pair(model, tokenizer, item: dict, responses: dict, append_eos: bool = True) -> dict | None:
     """item: {"id", "base_prompt", "terse_prompt"}. Returns None for empty-response items (skip,
-    don't pad -- batch size is always 1 here, so there's no batching to preserve by padding)."""
-    teacher_response = responses[str(item["id"])]
+    don't pad -- batch size is always 1 here, so there's no batching to preserve by padding).
+
+    APPENDS THE ASSISTANT TURN-END TOKEN to the teacher-forced response when the generation
+    terminated naturally. The reference constructs its training sequence with
+    apply_chat_template(..., add_generation_prompt=False) over a message list ending in the
+    assistant turn (tokenization_utils.create_prompt_and_answer), which emits that token as part
+    of the sequence. This project generates the response separately and decodes it with
+    skip_special_tokens=True, which strips it -- so without this step the response span contains
+    no stop token at all.
+
+    That gap matters more here than it would elsewhere: under the NLL objective the model is
+    never once asked to raise P(end-of-turn) at any position, and deciding when to stop is the
+    most direct mechanism by which a steering vector can shorten output. On a token-reduction
+    task, omitting it removes the training signal most aligned with the thing being measured.
+
+    Guarded on `finished`: appending a stop token to a response that was TRUNCATED at
+    max_new_tokens would teach the gate that an arbitrary cutoff is a valid stopping point.
+    Legacy cache entries report finished=None ("unknown") and are treated as not-finished."""
+    entry = normalize_cache_entry(responses[str(item["id"])])
+    teacher_response = entry["text"]
     resp_ids = tokenizer(teacher_response, return_tensors="pt", add_special_tokens=False)["input_ids"].to(model.device)
     if resp_ids.shape[1] == 0:
         return None
+
+    if append_eos and entry["finished"] is True and tokenizer.eos_token_id is not None:
+        eos = torch.tensor([[tokenizer.eos_token_id]], device=resp_ids.device, dtype=resp_ids.dtype)
+        resp_ids = torch.cat([resp_ids, eos], dim=1)
 
     base_ids = tokenizer(item["base_prompt"], return_tensors="pt")["input_ids"].to(model.device)
     instr_ids = tokenizer(item["terse_prompt"], return_tensors="pt")["input_ids"].to(model.device)

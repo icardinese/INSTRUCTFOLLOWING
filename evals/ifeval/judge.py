@@ -14,6 +14,13 @@ if str(_IFEVAL_SCRIPTS_PARENT) not in sys.path:
 
 from ifeval_scripts.evaluation_main import InputExample, test_instruction_following_loose  # noqa: E402
 
+# IFEval is NOT a length task -- the instruction is a format/content constraint, and compliance
+# is the programmatic checker's verdict. Ranking by avg_tokens (the previous unconditional
+# behaviour of select_constrained_survivors) would have selected whichever variant happened to
+# emit the shortest text, which is unrelated to following the constraint.
+RANK_BY = "primary_desc"     # descending on follow_all_instructions
+PRIMARY_FIELD_MAX = 1        # follow_all_instructions is 0/1, not 0-2
+
 SCORE_FIELDS = ["follow_all_instructions", "n_followed", "n_total"]  # exactly what score_response
 # returns -- see evals/caveman/judge.py's SCORE_FIELDS for why this is needed.
 

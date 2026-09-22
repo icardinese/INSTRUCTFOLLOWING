@@ -121,5 +121,45 @@ def generate_response(
     return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
 
+@torch.no_grad()
+def generate_response_with_meta(
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizer,
+    prompt_text: str,
+    max_new_tokens: int = MAX_NEW_TOKENS,
+    extra_stop_token_ids: list[int] | None = None,
+) -> dict:
+    """generate_response, plus whether the generation STOPPED ON ITS OWN rather than hitting the
+    max_new_tokens cap.
+
+    Needed because steering/psr/data.py appends the assistant turn-end token to the teacher-forced
+    response (the reference builds its training sequence via apply_chat_template with the
+    assistant message included, which emits that token; decoding with skip_special_tokens=True
+    strips it). Appending it to a response that was TRUNCATED at the cap would teach the gate that
+    an arbitrary 150-token cutoff is a valid place to stop -- which, on a task whose entire
+    dependent variable is output length, is exactly the wrong lesson. So the flag is recorded here
+    and honored there.
+
+    Returns {"text": str, "finished": bool}."""
+    inputs = tokenizer(prompt_text, return_tensors="pt").to(model.device)
+    stop_ids = [tokenizer.eos_token_id] + (extra_stop_token_ids or [])
+    output_ids = model.generate(
+        **inputs,
+        max_new_tokens=max_new_tokens,
+        do_sample=False,
+        pad_token_id=tokenizer.eos_token_id,
+        eos_token_id=stop_ids,
+    )
+    new_tokens = output_ids[0, inputs["input_ids"].shape[1]:]
+    # Terminated naturally iff a stop token was actually emitted. Checking for the token is more
+    # reliable than comparing len(new_tokens) to max_new_tokens, which would misreport a response
+    # that happens to stop at exactly the cap.
+    finished = bool(len(new_tokens) > 0 and new_tokens[-1].item() in set(stop_ids))
+    return {
+        "text": tokenizer.decode(new_tokens, skip_special_tokens=True).strip(),
+        "finished": finished,
+    }
+
+
 def token_count(tokenizer: PreTrainedTokenizer, text: str) -> int:
     return len(tokenizer(text, add_special_tokens=False)["input_ids"])

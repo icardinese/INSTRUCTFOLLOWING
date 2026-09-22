@@ -35,11 +35,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from adapters.registry import get_adapter
 from core.generation_cache import load_or_compute_responses
-from core.model_common import generate_response, load_model, num_layers, token_count
+from core.model_common import generate_response, load_model, num_layers, token_count, generate_response_with_meta
 from evals.layer_hparam_search import (
     DEFAULT_MAX_BATCH_ROWS, RETRAIN_FNS, SearchContext, load_existing_tiered_results,
 )
 from steering.batch_routing import generate_batched_uniform
+from adapters.registry import TASK_CHOICES
 
 # variant key -> tiered-search filename stems to try (new convention first, then legacy)
 TIERED = {
@@ -128,8 +129,8 @@ def main(task: str, n: int, seed: int, max_batch_rows: int, only: list[str] | No
 
     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
-    tr = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
-    dv = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
+    tr = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
+    dv = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
     ctx = SearchContext(model=model, tokenizer=tokenizer, n_layers=num_layers(model),
                          hidden_size=model.config.hidden_size, cache_dir=adapter.CACHE_DIR,
                          train_items=train_items, dev_items=dev_items,
@@ -329,7 +330,7 @@ def judge(task: str) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--task", default="caveman", choices=["caveman", "ifeval"])
+    ap.add_argument("--task", default="caveman", choices=TASK_CHOICES)
     ap.add_argument("--n", type=int, default=180)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--max-batch-rows", type=int, default=DEFAULT_MAX_BATCH_ROWS)

@@ -21,7 +21,7 @@ import os
 import torch
 
 from adapters.registry import get_adapter
-from core.model_common import generate_response, load_model, num_layers
+from core.model_common import generate_response, load_model, num_layers, generate_response_with_meta
 from core.generation_cache import load_or_compute_responses
 from core.reproducibility import set_seed
 from core.sweep import run_grid_sweep
@@ -29,12 +29,22 @@ from steering.psr.conceptor.rank_diagnostic import participation_ratio
 from steering.psr.conceptor.selfproj.logic import compute_delta_scale, forward_with_gate_hook
 from steering.psr.data import load_or_pool_separate_poles
 from steering.psr.gate import init_gate_state
+from steering.psr.reference_config import (
+    DEFAULT_LOSS_BALANCE,
+    N_EPOCHS_MSE,
+    WEIGHT_DECAY as REF_WEIGHT_DECAY,
+    epochs_for,
+    loss_balance,
+)
 from steering.psr.training_loop import train_gate
+from adapters.registry import TASK_CHOICES
 
-N_EPOCHS = 3
+N_EPOCHS = N_EPOCHS_MSE  # reference: 15 for MSE, 7 for LL -- see epochs_for()
 LR = float(os.environ.get("PSR_CONCEPTOR_SELFPROJ_LR", 1e-3))
-WEIGHT_DECAY = 1e-4
-REG_COEFF = float(os.environ.get("PSR_CONCEPTOR_SELFPROJ_REG_COEFF", 0.1))
+WEIGHT_DECAY = REF_WEIGHT_DECAY  # 1e-6; the reference's dataclass default of 1e-4 is never used
+LOSS_BALANCE = os.environ.get("PSR_CONCEPTOR_SELFPROJ_LOSS_BALANCE", DEFAULT_LOSS_BALANCE)
+REG_COEFF = float(os.environ.get("PSR_CONCEPTOR_SELFPROJ_REG_COEFF", loss_balance(LOSS_BALANCE)["reg_coeff"]))
+NORMALIZE_PSI = loss_balance(LOSS_BALANCE)["normalize_psi"]
 # mse_weight/nll_weight are independent (see steering/psr/training_loop.py's module docstring).
 MSE_WEIGHT = float(os.environ.get("PSR_CONCEPTOR_SELFPROJ_MSE_WEIGHT", 1.0))
 NLL_WEIGHT = float(os.environ.get("PSR_CONCEPTOR_SELFPROJ_NLL_WEIGHT", 0.0))
@@ -81,12 +91,17 @@ def train_one_config(
     model, tokenizer, layer_idx: int, alpha: float, seed: int, n_layers: int, device: str,
     train_items: list[dict], dev_items: list[dict], train_responses: dict, dev_responses: dict,
     cache_dir, lr: float = LR, weight_decay: float = WEIGHT_DECAY, reg_coeff: float = REG_COEFF,
-    n_epochs: int = N_EPOCHS, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
+    n_epochs: int | None = None, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
+    normalize_psi: bool = NORMALIZE_PSI,
     on_epoch_end=None,
 ) -> dict:
     """One (layer, alpha) point. Returns {"skipped": True, ...} without training anything if
     delta_scale is too small at this alpha (C indistinguishable from identity) -- same skip
     condition the original percentile loop used, now reusable from sweep() too."""
+    # Reference epoch budget is objective-dependent (15 MSE / 7 LL). Training both endpoints
+    # for the same number of epochs confounds 'which objective wins' with 'which converged'.
+    if n_epochs is None:
+        n_epochs = epochs_for(mse_weight, nll_weight)
     set_seed(seed)
     base_pool, instr_pool = load_or_pool_separate_poles(model, tokenizer, train_items, layer_idx, train_responses, cache_dir)
     # See src/psr/conceptor/train.py's train_one_config for why this .to(device) is necessary --
@@ -108,7 +123,7 @@ def train_one_config(
         return {"skipped": True, "delta_scale": delta_scale.item(), "participation_ratio": pr}
 
     gate = init_gate_state(hidden_size, device)
-    optimizer = torch.optim.Adam(gate.parameters(), lr=lr, weight_decay=weight_decay)
+    optimizer = torch.optim.AdamW(gate.parameters(), lr=lr, weight_decay=weight_decay)
     forward_fn = lambda pair: forward_with_gate_hook(model, gate, conceptor, delta_scale, layer_idx, pair["full_base"], pair["n_resp"])
 
     wrapped_on_epoch_end = (lambda epoch, metrics: on_epoch_end(epoch, gate, conceptor, delta_scale, metrics)) if on_epoch_end else None
@@ -116,9 +131,11 @@ def train_one_config(
         model, tokenizer, forward_fn, optimizer, layer_idx, n_layers,
         train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
         mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
+        normalize_psi=normalize_psi,
     )
     return {
         "skipped": False,
+        "completed_epochs": n_epochs,
         "baseline_mse": baseline_metrics["mse"], "baseline_nll": baseline_metrics["nll"],
         "final_mse": final_metrics["mse"], "final_nll": final_metrics["nll"],
         "delta_scale": delta_scale.item(), "participation_ratio": pr,
@@ -145,8 +162,8 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
         with (adapter.RESULTS_DIR / "const_steer_config.json").open() as f:
             layer_idx = json.load(f)["layer"]
 
-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
+    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
+    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
 
     base_pool, instr_pool = load_or_pool_separate_poles(model, tokenizer, train_items, layer_idx, train_responses, adapter.CACHE_DIR)
     pool = torch.cat([base_pool, instr_pool], dim=0)
@@ -225,8 +242,8 @@ def sweep(
 
     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
+    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
+    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
 
     # alpha grid depends on the layer's own eigenvalue spectrum -- computed once per layer here,
     # not once per (layer, alpha, loss-config) grid point, since it only depends on layer.
@@ -296,7 +313,7 @@ def sweep(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
+    parser.add_argument("--task", required=True, choices=TASK_CHOICES)
     parser.add_argument("--layer", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--sweep", action="store_true", help="sweep layer x adaptive-alpha x loss-config instead of a single-layer alpha sweep")

@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from adapters.registry import get_adapter
 from core.generation_cache import load_or_compute_responses
-from core.model_common import generate_response, load_model, num_layers, token_count
+from core.model_common import generate_response, load_model, num_layers, token_count, generate_response_with_meta
 from evals.bootstrap_analysis import bootstrap_ci, paired_bootstrap_diff
 from evals.layer_hparam_search import (
     DEFAULT_MAX_BATCH_ROWS, RETRAIN_FNS, SearchContext, _score_all_concurrently,
@@ -42,6 +42,7 @@ from evals.layer_hparam_search import (
 )
 from evals.registry import get_eval_adapter
 from steering.batch_routing import generate_batched_uniform
+from adapters.registry import TASK_CHOICES
 
 DEFAULT_N = 180
 
@@ -80,8 +81,8 @@ def build_context(adapter, seed: int) -> SearchContext:
         p.requires_grad_(False)
     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
+    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
+    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
     return SearchContext(
         model=model, tokenizer=tokenizer, n_layers=num_layers(model),
         hidden_size=model.config.hidden_size, cache_dir=adapter.CACHE_DIR,
@@ -177,7 +178,7 @@ def main(task: str, variants: list[str], n: int, seed: int, max_batch_rows: int)
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--task", default="caveman", choices=["caveman", "ifeval"])
+    ap.add_argument("--task", default="caveman", choices=TASK_CHOICES)
     ap.add_argument("--variants", required=True,
                      help="comma-separated, e.g. 'stolfo,const,sg'. Must be keys of RETRAIN_FNS.")
     ap.add_argument("--n", type=int, default=DEFAULT_N)

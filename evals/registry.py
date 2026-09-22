@@ -11,6 +11,7 @@ _REQUIRED_ATTRS = ["score_response", "SCORE_FIELDS"]
 _TASKS = {
     "caveman": "evals.caveman.judge",
     "ifeval": "evals.ifeval.judge",
+    "triage": "evals.triage.judge",
 }
 
 

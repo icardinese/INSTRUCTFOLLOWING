@@ -46,7 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from adapters.registry import get_adapter
 from core.generation_cache import load_or_compute_responses
-from core.model_common import generate_response, load_model, num_layers
+from core.model_common import generate_response, load_model, num_layers, generate_response_with_meta
 from core.reproducibility import set_seed
 from core.sweep import run_grid_sweep
 from steering.psr.conceptor.direction import compute_conceptor_from_correlation, project_direction
@@ -54,12 +54,22 @@ from steering.psr.data import accumulate_bipolar_correlation_all_layers, load_or
 from steering.psr.gate import init_gate_state
 from steering.psr.multi_gate import forward_with_multi_gate_hook
 from steering.psr.proper.direction import init_direction
+from steering.psr.reference_config import (
+    DEFAULT_LOSS_BALANCE,
+    N_EPOCHS_MSE,
+    WEIGHT_DECAY as REF_WEIGHT_DECAY,
+    epochs_for,
+    loss_balance,
+)
 from steering.psr.training_loop import train_gate
+from adapters.registry import TASK_CHOICES
 
-N_EPOCHS = 3
+N_EPOCHS = N_EPOCHS_MSE  # reference: 15 for MSE, 7 for LL -- see epochs_for()
 LR = float(os.environ.get("PSR_ALL_LAYER_LR", 1e-3))
-WEIGHT_DECAY = 1e-4
-REG_COEFF = float(os.environ.get("PSR_ALL_LAYER_REG_COEFF", 0.1))
+WEIGHT_DECAY = REF_WEIGHT_DECAY  # 1e-6; the reference's dataclass default of 1e-4 is never used
+LOSS_BALANCE = os.environ.get("PSR_ALL_LAYER_LOSS_BALANCE", DEFAULT_LOSS_BALANCE)
+REG_COEFF = float(os.environ.get("PSR_ALL_LAYER_REG_COEFF", loss_balance(LOSS_BALANCE)["reg_coeff"]))
+NORMALIZE_PSI = loss_balance(LOSS_BALANCE)["normalize_psi"]
 MSE_WEIGHT = float(os.environ.get("PSR_ALL_LAYER_MSE_WEIGHT", 1.0))
 NLL_WEIGHT = float(os.environ.get("PSR_ALL_LAYER_NLL_WEIGHT", 0.0))
 
@@ -133,12 +143,17 @@ def train_one_config(
     n_layers: int, hidden_size: int, device: str,
     train_items: list[dict], dev_items: list[dict], train_responses: dict, dev_responses: dict,
     cache_dir, lr: float = LR, weight_decay: float = WEIGHT_DECAY, reg_coeff: float = REG_COEFF,
-    n_epochs: int = N_EPOCHS, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
+    n_epochs: int | None = None, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
+    normalize_psi: bool = NORMALIZE_PSI,
     alpha: float = ALPHA, on_epoch_end=None,
 ) -> dict:
     """Trains N gates (+ N directions, if direction_source == "trained") jointly. Mirrors
     src/psr/proper/train.py's train_one_config contract: scalar dev metrics AND the trained tensors
     in one dict, callers pick out what they need."""
+    # Reference epoch budget is objective-dependent (15 MSE / 7 LL). Training both endpoints
+    # for the same number of epochs confounds 'which objective wins' with 'which converged'.
+    if n_epochs is None:
+        n_epochs = epochs_for(mse_weight, nll_weight)
     set_seed(seed)
     gates = {l: init_gate_state(hidden_size, device) for l in layer_indices}
     directions, direction_params = build_directions(
@@ -151,7 +166,7 @@ def train_one_config(
     # backward in train_gate, is what makes the interventions genuinely simultaneous rather than
     # N independent single-layer trainings (the flaw in the old mislabeled "A-PSR").
     gate_params = [p for l in layer_indices for p in gates[l].parameters()]
-    optimizer = torch.optim.Adam(gate_params + direction_params, lr=lr, weight_decay=weight_decay)
+    optimizer = torch.optim.AdamW(gate_params + direction_params, lr=lr, weight_decay=weight_decay)
 
     forward_fn = lambda pair: forward_with_multi_gate_hook(
         model, gates, directions, layer_indices, pair["full_base"], pair["n_resp"]
@@ -163,8 +178,10 @@ def train_one_config(
         model, tokenizer, forward_fn, optimizer, 0, n_layers,
         train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
         mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
+        normalize_psi=normalize_psi,
     )
     return {
+        "completed_epochs": n_epochs,
         "baseline_mse": baseline_metrics["mse"], "baseline_nll": baseline_metrics["nll"],
         "final_mse": final_metrics["mse"], "final_nll": final_metrics["nll"],
         "gates": {l: {"weight": gates[l].weight.detach().cpu(), "bias": gates[l].bias.detach().cpu(),
@@ -182,7 +199,7 @@ def _save_checkpoint(out_path, result: dict, direction_source: str, layer_indice
         # alpha only means anything for direction_source="conceptor"; stored as None otherwise so
         # the key is always present and a reader never has to guess whether it was applicable.
         "alpha": alpha if direction_source == "conceptor" else None,
-        "completed_epochs": N_EPOCHS,
+        "completed_epochs": result["completed_epochs"],
     }, out_path)
 
 
@@ -196,8 +213,8 @@ def _setup(task: str, device: str):
     n_layers = num_layers(model)
     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
+    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
+    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
     return adapter, model, tokenizer, n_layers, train_items, dev_items, train_responses, dev_responses
 
 
@@ -288,7 +305,7 @@ def sweep(task: str, direction_source: str, layers: list[int] | None = None,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
+    parser.add_argument("--task", required=True, choices=TASK_CHOICES)
     parser.add_argument("--direction-source", required=True, choices=DIRECTION_SOURCES,
                          help="'trained' = A-PSR (faithful); 'diff_in_means' = Multi-Gate ablation")
     parser.add_argument("--layers", type=str, default=None,

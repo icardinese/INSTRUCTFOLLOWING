@@ -1,0 +1,1707 @@
+diff --git a/core/generation_cache.py b/core/generation_cache.py
+index a07c77a..a9248c5 100644
+--- a/core/generation_cache.py
++++ b/core/generation_cache.py
+@@ -1,20 +1,52 @@
+ """Caches teacher-forced generations keyed by item id. Nothing here is PSR-specific -- any method
+ needing "generate once, reuse across epochs/configs" reuses this exactly as-is.
++
++CACHE FORMAT (changed 2026-09-20): values are now {"text": str, "finished": bool} rather than a
++bare string. `finished` records whether generation stopped on its own or hit the max_new_tokens
++cap, which steering/psr/data.py needs in order to decide whether appending an end-of-turn token to
++the teacher-forced response is legitimate (see generate_response_with_meta's docstring).
++
++OLD CACHES STILL LOAD. A bare-string value is read as {"text": <str>, "finished": None}, where
++None means "unknown". Callers must treat unknown as not-finished, since assuming a truncated
++response terminated naturally is the failure mode that actually corrupts training. Delete the
++cache file and regenerate to get real flags -- generation is batched and cheap; it was never the
++bottleneck.
+ """
+ import json
+ 
+ 
+-def precompute_responses(model, tokenizer, items: list[dict], generate_response) -> dict:
+-    """items: [{"id": ..., "terse_prompt": ...}, ...]. generate_response is passed in rather than
+-    imported, so this file has zero dependency on any specific model-loading module."""
+-    return {str(item["id"]): generate_response(model, tokenizer, item["terse_prompt"]) for item in items}
++def normalize_cache_entry(value) -> dict:
++    """Accepts either the new dict form or a legacy bare string. Returns the dict form.
++
++    `finished` is None (not False) for legacy entries, so that "we never recorded this" stays
++    distinguishable from "we recorded that it was truncated" in any future diagnostic. Both are
++    treated as not-safe-to-append downstream."""
++    if isinstance(value, str):
++        return {"text": value, "finished": None}
++    return {"text": value["text"], "finished": value.get("finished")}
++
++
++def response_text(value) -> str:
++    """The generated text, from either cache format. Use this anywhere the old code did a bare
++    `responses[str(item_id)]` and only wanted the string."""
++    return normalize_cache_entry(value)["text"]
++
++
++def precompute_responses(model, tokenizer, items: list[dict], generate_response_with_meta) -> dict:
++    """items: [{"id": ..., "terse_prompt": ...}, ...]. The generation function is passed in rather
++    than imported, so this file has zero dependency on any specific model-loading module."""
++    return {
++        str(item["id"]): generate_response_with_meta(model, tokenizer, item["terse_prompt"])
++        for item in items
++    }
+ 
+ 
+-def load_or_compute_responses(model, tokenizer, items: list[dict], cache_path, generate_response) -> dict:
++def load_or_compute_responses(model, tokenizer, items: list[dict], cache_path, generate_response_with_meta) -> dict:
+     if cache_path.exists():
+         with cache_path.open() as f:
+-            return json.load(f)
+-    responses = precompute_responses(model, tokenizer, items, generate_response)
++            raw = json.load(f)
++        return {k: normalize_cache_entry(v) for k, v in raw.items()}
++    responses = precompute_responses(model, tokenizer, items, generate_response_with_meta)
+     with cache_path.open("w") as f:
+         json.dump(responses, f)
+     return responses
+diff --git a/core/model_common.py b/core/model_common.py
+index d3130a4..078474a 100644
+--- a/core/model_common.py
++++ b/core/model_common.py
+@@ -121,5 +121,45 @@ def generate_response(
+     return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+ 
+ 
++@torch.no_grad()
++def generate_response_with_meta(
++    model: PreTrainedModel,
++    tokenizer: PreTrainedTokenizer,
++    prompt_text: str,
++    max_new_tokens: int = MAX_NEW_TOKENS,
++    extra_stop_token_ids: list[int] | None = None,
++) -> dict:
++    """generate_response, plus whether the generation STOPPED ON ITS OWN rather than hitting the
++    max_new_tokens cap.
++
++    Needed because steering/psr/data.py appends the assistant turn-end token to the teacher-forced
++    response (the reference builds its training sequence via apply_chat_template with the
++    assistant message included, which emits that token; decoding with skip_special_tokens=True
++    strips it). Appending it to a response that was TRUNCATED at the cap would teach the gate that
++    an arbitrary 150-token cutoff is a valid place to stop -- which, on a task whose entire
++    dependent variable is output length, is exactly the wrong lesson. So the flag is recorded here
++    and honored there.
++
++    Returns {"text": str, "finished": bool}."""
++    inputs = tokenizer(prompt_text, return_tensors="pt").to(model.device)
++    stop_ids = [tokenizer.eos_token_id] + (extra_stop_token_ids or [])
++    output_ids = model.generate(
++        **inputs,
++        max_new_tokens=max_new_tokens,
++        do_sample=False,
++        pad_token_id=tokenizer.eos_token_id,
++        eos_token_id=stop_ids,
++    )
++    new_tokens = output_ids[0, inputs["input_ids"].shape[1]:]
++    # Terminated naturally iff a stop token was actually emitted. Checking for the token is more
++    # reliable than comparing len(new_tokens) to max_new_tokens, which would misreport a response
++    # that happens to stop at exactly the cap.
++    finished = bool(len(new_tokens) > 0 and new_tokens[-1].item() in set(stop_ids))
++    return {
++        "text": tokenizer.decode(new_tokens, skip_special_tokens=True).strip(),
++        "finished": finished,
++    }
++
++
+ def token_count(tokenizer: PreTrainedTokenizer, text: str) -> int:
+     return len(tokenizer(text, add_special_tokens=False)["input_ids"])
+diff --git a/evals/layer_hparam_search.py b/evals/layer_hparam_search.py
+index aef7747..4433591 100644
+--- a/evals/layer_hparam_search.py
++++ b/evals/layer_hparam_search.py
+@@ -33,7 +33,7 @@ import torch
+ 
+ from adapters.registry import get_adapter
+ from core.generation_cache import load_or_compute_responses
+-from core.model_common import generate_response, load_model, num_layers
++from core.model_common import generate_response, load_model, num_layers, generate_response_with_meta
+ from evals.bootstrap_analysis import bootstrap_ci, paired_bootstrap_diff
+ from evals.registry import get_eval_adapter
+ from steering.batch_routing import generate_with_routed_configs
+@@ -592,8 +592,8 @@ def build_search_context(adapter, seed: int) -> SearchContext:
+ 
+     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
+     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+     return SearchContext(
+         model=model, tokenizer=tokenizer, n_layers=num_layers(model), hidden_size=model.config.hidden_size,
+         cache_dir=adapter.CACHE_DIR, train_items=train_items, dev_items=dev_items,
+diff --git a/scripts/prompt_plus_steer_missing_piece.py b/scripts/prompt_plus_steer_missing_piece.py
+index 0eaaee1..cebbd5e 100644
+--- a/scripts/prompt_plus_steer_missing_piece.py
++++ b/scripts/prompt_plus_steer_missing_piece.py
+@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+ 
+ from adapters.registry import get_adapter
+ from core.generation_cache import load_or_compute_responses
+-from core.model_common import generate_response, load_model, num_layers, token_count
++from core.model_common import generate_response, load_model, num_layers, token_count, generate_response_with_meta
+ from evals.bootstrap_analysis import bootstrap_ci, paired_bootstrap_diff
+ from evals.layer_hparam_search import RETRAIN_FNS, SearchContext, load_existing_tiered_results
+ from evals.registry import get_eval_adapter
+@@ -72,8 +72,8 @@ def generate_prompt_plus_steer(variant: str) -> dict:
+ 
+     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
+     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+     ctx = SearchContext(
+         model=model, tokenizer=tokenizer, n_layers=num_layers(model), hidden_size=model.config.hidden_size,
+         cache_dir=adapter.CACHE_DIR, train_items=train_items, dev_items=dev_items,
+diff --git a/scripts/regen_token_cis.py b/scripts/regen_token_cis.py
+index 97e0728..d876455 100644
+--- a/scripts/regen_token_cis.py
++++ b/scripts/regen_token_cis.py
+@@ -35,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+ 
+ from adapters.registry import get_adapter
+ from core.generation_cache import load_or_compute_responses
+-from core.model_common import generate_response, load_model, num_layers, token_count
++from core.model_common import generate_response, load_model, num_layers, token_count, generate_response_with_meta
+ from evals.layer_hparam_search import (
+     DEFAULT_MAX_BATCH_ROWS, RETRAIN_FNS, SearchContext, load_existing_tiered_results,
+ )
+@@ -128,8 +128,8 @@ def main(task: str, n: int, seed: int, max_batch_rows: int, only: list[str] | No
+ 
+     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
+     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
+-    tr = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dv = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    tr = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dv = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+     ctx = SearchContext(model=model, tokenizer=tokenizer, n_layers=num_layers(model),
+                          hidden_size=model.config.hidden_size, cache_dir=adapter.CACHE_DIR,
+                          train_items=train_items, dev_items=dev_items,
+diff --git a/scripts/run_prompt_plus.py b/scripts/run_prompt_plus.py
+index dbbafec..bff3c73 100644
+--- a/scripts/run_prompt_plus.py
++++ b/scripts/run_prompt_plus.py
+@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+ 
+ from adapters.registry import get_adapter
+ from core.generation_cache import load_or_compute_responses
+-from core.model_common import generate_response, load_model, num_layers, token_count
++from core.model_common import generate_response, load_model, num_layers, token_count, generate_response_with_meta
+ from evals.bootstrap_analysis import bootstrap_ci, paired_bootstrap_diff
+ from evals.layer_hparam_search import (
+     DEFAULT_MAX_BATCH_ROWS, RETRAIN_FNS, SearchContext, _score_all_concurrently,
+@@ -80,8 +80,8 @@ def build_context(adapter, seed: int) -> SearchContext:
+         p.requires_grad_(False)
+     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
+     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+     return SearchContext(
+         model=model, tokenizer=tokenizer, n_layers=num_layers(model),
+         hidden_size=model.config.hidden_size, cache_dir=adapter.CACHE_DIR,
+diff --git a/src/prompt_plus_steer_missing_piece.py b/src/prompt_plus_steer_missing_piece.py
+index 0eaaee1..cebbd5e 100644
+--- a/src/prompt_plus_steer_missing_piece.py
++++ b/src/prompt_plus_steer_missing_piece.py
+@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+ 
+ from adapters.registry import get_adapter
+ from core.generation_cache import load_or_compute_responses
+-from core.model_common import generate_response, load_model, num_layers, token_count
++from core.model_common import generate_response, load_model, num_layers, token_count, generate_response_with_meta
+ from evals.bootstrap_analysis import bootstrap_ci, paired_bootstrap_diff
+ from evals.layer_hparam_search import RETRAIN_FNS, SearchContext, load_existing_tiered_results
+ from evals.registry import get_eval_adapter
+@@ -72,8 +72,8 @@ def generate_prompt_plus_steer(variant: str) -> dict:
+ 
+     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
+     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+     ctx = SearchContext(
+         model=model, tokenizer=tokenizer, n_layers=num_layers(model), hidden_size=model.config.hidden_size,
+         cache_dir=adapter.CACHE_DIR, train_items=train_items, dev_items=dev_items,
+diff --git a/src/psr/all_layer/train.py b/src/psr/all_layer/train.py
+index c537e1f..e3e6c68 100644
+--- a/src/psr/all_layer/train.py
++++ b/src/psr/all_layer/train.py
+@@ -46,7 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+ 
+ from adapters.registry import get_adapter
+ from core.generation_cache import load_or_compute_responses
+-from core.model_common import generate_response, load_model, num_layers
++from core.model_common import generate_response, load_model, num_layers, generate_response_with_meta
+ from core.reproducibility import set_seed
+ from core.sweep import run_grid_sweep
+ from steering.psr.conceptor.direction import compute_conceptor_from_correlation, project_direction
+@@ -54,12 +54,21 @@ from steering.psr.data import accumulate_bipolar_correlation_all_layers, load_or
+ from steering.psr.gate import init_gate_state
+ from steering.psr.multi_gate import forward_with_multi_gate_hook
+ from steering.psr.proper.direction import init_direction
++from steering.psr.reference_config import (
++    DEFAULT_LOSS_BALANCE,
++    N_EPOCHS_MSE,
++    WEIGHT_DECAY as REF_WEIGHT_DECAY,
++    epochs_for,
++    loss_balance,
++)
+ from steering.psr.training_loop import train_gate
+ 
+-N_EPOCHS = 3
++N_EPOCHS = N_EPOCHS_MSE  # reference: 15 for MSE, 7 for LL -- see epochs_for()
+ LR = float(os.environ.get("PSR_ALL_LAYER_LR", 1e-3))
+-WEIGHT_DECAY = 1e-4
+-REG_COEFF = float(os.environ.get("PSR_ALL_LAYER_REG_COEFF", 0.1))
++WEIGHT_DECAY = REF_WEIGHT_DECAY  # 1e-6; the reference's dataclass default of 1e-4 is never used
++LOSS_BALANCE = os.environ.get("PSR_ALL_LAYER_LOSS_BALANCE", DEFAULT_LOSS_BALANCE)
++REG_COEFF = float(os.environ.get("PSR_ALL_LAYER_REG_COEFF", loss_balance(LOSS_BALANCE)["reg_coeff"]))
++NORMALIZE_PSI = loss_balance(LOSS_BALANCE)["normalize_psi"]
+ MSE_WEIGHT = float(os.environ.get("PSR_ALL_LAYER_MSE_WEIGHT", 1.0))
+ NLL_WEIGHT = float(os.environ.get("PSR_ALL_LAYER_NLL_WEIGHT", 0.0))
+ 
+@@ -133,12 +142,17 @@ def train_one_config(
+     n_layers: int, hidden_size: int, device: str,
+     train_items: list[dict], dev_items: list[dict], train_responses: dict, dev_responses: dict,
+     cache_dir, lr: float = LR, weight_decay: float = WEIGHT_DECAY, reg_coeff: float = REG_COEFF,
+-    n_epochs: int = N_EPOCHS, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
++    n_epochs: int | None = None, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
++    normalize_psi: bool = NORMALIZE_PSI,
+     alpha: float = ALPHA, on_epoch_end=None,
+ ) -> dict:
+     """Trains N gates (+ N directions, if direction_source == "trained") jointly. Mirrors
+     src/psr/proper/train.py's train_one_config contract: scalar dev metrics AND the trained tensors
+     in one dict, callers pick out what they need."""
++    # Reference epoch budget is objective-dependent (15 MSE / 7 LL). Training both endpoints
++    # for the same number of epochs confounds 'which objective wins' with 'which converged'.
++    if n_epochs is None:
++        n_epochs = epochs_for(mse_weight, nll_weight)
+     set_seed(seed)
+     gates = {l: init_gate_state(hidden_size, device) for l in layer_indices}
+     directions, direction_params = build_directions(
+@@ -151,7 +165,7 @@ def train_one_config(
+     # backward in train_gate, is what makes the interventions genuinely simultaneous rather than
+     # N independent single-layer trainings (the flaw in the old mislabeled "A-PSR").
+     gate_params = [p for l in layer_indices for p in gates[l].parameters()]
+-    optimizer = torch.optim.Adam(gate_params + direction_params, lr=lr, weight_decay=weight_decay)
++    optimizer = torch.optim.AdamW(gate_params + direction_params, lr=lr, weight_decay=weight_decay)
+ 
+     forward_fn = lambda pair: forward_with_multi_gate_hook(
+         model, gates, directions, layer_indices, pair["full_base"], pair["n_resp"]
+@@ -163,8 +177,10 @@ def train_one_config(
+         model, tokenizer, forward_fn, optimizer, 0, n_layers,
+         train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
+         mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
++        normalize_psi=normalize_psi,
+     )
+     return {
++        "completed_epochs": n_epochs,
+         "baseline_mse": baseline_metrics["mse"], "baseline_nll": baseline_metrics["nll"],
+         "final_mse": final_metrics["mse"], "final_nll": final_metrics["nll"],
+         "gates": {l: {"weight": gates[l].weight.detach().cpu(), "bias": gates[l].bias.detach().cpu(),
+@@ -182,7 +198,7 @@ def _save_checkpoint(out_path, result: dict, direction_source: str, layer_indice
+         # alpha only means anything for direction_source="conceptor"; stored as None otherwise so
+         # the key is always present and a reader never has to guess whether it was applicable.
+         "alpha": alpha if direction_source == "conceptor" else None,
+-        "completed_epochs": N_EPOCHS,
++        "completed_epochs": result["completed_epochs"],
+     }, out_path)
+ 
+ 
+@@ -196,8 +212,8 @@ def _setup(task: str, device: str):
+     n_layers = num_layers(model)
+     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
+     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+     return adapter, model, tokenizer, n_layers, train_items, dev_items, train_responses, dev_responses
+ 
+ 
+diff --git a/src/psr/clamp_gate/train.py b/src/psr/clamp_gate/train.py
+index e96e009..6fb541a 100644
+--- a/src/psr/clamp_gate/train.py
++++ b/src/psr/clamp_gate/train.py
+@@ -42,20 +42,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+ 
+ from adapters.registry import get_adapter
+ from core.generation_cache import load_or_compute_responses
+-from core.model_common import generate_response, load_model, num_layers
++from core.model_common import generate_response, load_model, num_layers, generate_response_with_meta
+ from core.reproducibility import set_seed
+ from core.sweep import run_grid_sweep
+ from steering.clamp.hooks import forward_with_gated_clamp_hook, forward_with_multi_gated_clamp_hook
+ from steering.const.direction import compute_diff_mean_direction
+ from steering.psr.data import load_or_pool_prompt_last_token_all_layers
+ from steering.psr.gate import init_gate_state
++from steering.psr.reference_config import (
++    DEFAULT_LOSS_BALANCE,
++    N_EPOCHS_MSE,
++    WEIGHT_DECAY as REF_WEIGHT_DECAY,
++    epochs_for,
++    loss_balance,
++)
+ from steering.psr.training_loop import train_gate
+ from steering.stolfo.direction import compute_target_projection
+ 
+-N_EPOCHS = 3
++N_EPOCHS = N_EPOCHS_MSE  # reference: 15 for MSE, 7 for LL -- see epochs_for()
+ LR = float(os.environ.get("PSR_CLAMP_LR", 1e-3))
+-WEIGHT_DECAY = 1e-4
+-REG_COEFF = float(os.environ.get("PSR_CLAMP_REG_COEFF", 0.1))
++WEIGHT_DECAY = REF_WEIGHT_DECAY  # 1e-6; the reference's dataclass default of 1e-4 is never used
++LOSS_BALANCE = os.environ.get("PSR_CLAMP_LOSS_BALANCE", DEFAULT_LOSS_BALANCE)
++REG_COEFF = float(os.environ.get("PSR_CLAMP_REG_COEFF", loss_balance(LOSS_BALANCE)["reg_coeff"]))
++NORMALIZE_PSI = loss_balance(LOSS_BALANCE)["normalize_psi"]
+ MSE_WEIGHT = float(os.environ.get("PSR_CLAMP_MSE_WEIGHT", 1.0))
+ NLL_WEIGHT = float(os.environ.get("PSR_CLAMP_NLL_WEIGHT", 0.0))
+ 
+@@ -83,9 +92,14 @@ def train_one_config(
+     model, tokenizer, layer_indices: list[int], seed: int, n_layers: int, hidden_size: int,
+     device: str, train_items: list[dict], dev_items: list[dict], train_responses: dict,
+     dev_responses: dict, cache_dir, lr: float = LR, weight_decay: float = WEIGHT_DECAY,
+-    reg_coeff: float = REG_COEFF, n_epochs: int = N_EPOCHS,
++    reg_coeff: float = REG_COEFF, n_epochs: int | None = None,
++    normalize_psi: bool = NORMALIZE_PSI,
+     mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT, on_epoch_end=None,
+ ) -> dict:
++    # Reference epoch budget is objective-dependent (15 MSE / 7 LL). Training both endpoints
++    # for the same number of epochs confounds 'which objective wins' with 'which converged'.
++    if n_epochs is None:
++        n_epochs = epochs_for(mse_weight, nll_weight)
+     set_seed(seed)
+     gates = {l: init_gate_state(hidden_size, device) for l in layer_indices}
+     directions, targets = build_clamp_params(
+@@ -93,7 +107,7 @@ def train_one_config(
+ 
+     # Gates only -- directions and targets are closed-form and frozen.
+     params = [p for l in layer_indices for p in gates[l].parameters()]
+-    optimizer = torch.optim.Adam(params, lr=lr, weight_decay=weight_decay)
++    optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=weight_decay)
+ 
+     if len(layer_indices) == 1:
+         l = layer_indices[0]
+@@ -111,8 +125,10 @@ def train_one_config(
+         model, tokenizer, forward_fn, optimizer, mse_from, n_layers,
+         train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
+         mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped,
++        normalize_psi=normalize_psi,
+     )
+     return {
++        "completed_epochs": n_epochs,
+         "baseline_mse": baseline_metrics["mse"], "baseline_nll": baseline_metrics["nll"],
+         "final_mse": final_metrics["mse"], "final_nll": final_metrics["nll"],
+         "gates": {l: {"weight": gates[l].weight.detach().cpu(), "bias": gates[l].bias.detach().cpu(),
+@@ -131,7 +147,7 @@ def _save(path, result, layer_indices, task, mse_weight, nll_weight):
+         "gates": result["gates"], "directions": result["directions"], "targets": result["targets"],
+         "layer_indices": layer_indices, "direction_source": "clamp_dim",
+         "task": task, "mse_weight": mse_weight, "nll_weight": nll_weight,
+-        "completed_epochs": N_EPOCHS,
++        "completed_epochs": result["completed_epochs"],
+     }, path)
+ 
+ 
+@@ -144,8 +160,8 @@ def _setup(task, device):
+         p.requires_grad_(False)
+     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
+     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
+-    tr = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dv = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    tr = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dv = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+     return adapter, model, tokenizer, num_layers(model), train_items, dev_items, tr, dv
+ 
+ 
+diff --git a/src/psr/conceptor/matrix/train.py b/src/psr/conceptor/matrix/train.py
+index dcee296..f8c57d8 100644
+--- a/src/psr/conceptor/matrix/train.py
++++ b/src/psr/conceptor/matrix/train.py
+@@ -15,7 +15,7 @@ import os
+ import torch
+ 
+ from adapters.registry import get_adapter
+-from core.model_common import generate_response, load_model, num_layers
++from core.model_common import generate_response, load_model, num_layers, generate_response_with_meta
+ from core.generation_cache import load_or_compute_responses
+ from core.reproducibility import set_seed
+ from core.sweep import run_grid_sweep
+@@ -24,12 +24,21 @@ from steering.psr.conceptor.matrix.logic import compute_delta_scale, forward_wit
+ from steering.psr.conceptor.rank_diagnostic import participation_ratio
+ from steering.psr.data import load_or_pool_separate_poles
+ from steering.psr.gate import init_gate_state
++from steering.psr.reference_config import (
++    DEFAULT_LOSS_BALANCE,
++    N_EPOCHS_MSE,
++    WEIGHT_DECAY as REF_WEIGHT_DECAY,
++    epochs_for,
++    loss_balance,
++)
+ from steering.psr.training_loop import train_gate
+ 
+-N_EPOCHS = 3
++N_EPOCHS = N_EPOCHS_MSE  # reference: 15 for MSE, 7 for LL -- see epochs_for()
+ LR = float(os.environ.get("PSR_CONCEPTOR_MATRIX_LR", 1e-3))
+-WEIGHT_DECAY = 1e-4
+-REG_COEFF = float(os.environ.get("PSR_CONCEPTOR_MATRIX_REG_COEFF", 0.1))
++WEIGHT_DECAY = REF_WEIGHT_DECAY  # 1e-6; the reference's dataclass default of 1e-4 is never used
++LOSS_BALANCE = os.environ.get("PSR_CONCEPTOR_MATRIX_LOSS_BALANCE", DEFAULT_LOSS_BALANCE)
++REG_COEFF = float(os.environ.get("PSR_CONCEPTOR_MATRIX_REG_COEFF", loss_balance(LOSS_BALANCE)["reg_coeff"]))
++NORMALIZE_PSI = loss_balance(LOSS_BALANCE)["normalize_psi"]
+ ALPHA = float(os.environ.get("PSR_CONCEPTOR_MATRIX_ALPHA", 4.0))
+ OUT_TAG = os.environ.get("PSR_CONCEPTOR_MATRIX_OUT_TAG", "")
+ # mse_weight/nll_weight are independent (see steering/psr/training_loop.py's module docstring).
+@@ -57,9 +66,14 @@ def train_one_config(
+     model, tokenizer, layer_idx: int, alpha: float, seed: int, n_layers: int, device: str,
+     train_items: list[dict], dev_items: list[dict], train_responses: dict, dev_responses: dict,
+     cache_dir, lr: float = LR, weight_decay: float = WEIGHT_DECAY, reg_coeff: float = REG_COEFF,
+-    n_epochs: int = N_EPOCHS, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
++    n_epochs: int | None = None, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
++    normalize_psi: bool = NORMALIZE_PSI,
+     on_epoch_end=None,
+ ) -> dict:
++    # Reference epoch budget is objective-dependent (15 MSE / 7 LL). Training both endpoints
++    # for the same number of epochs confounds 'which objective wins' with 'which converged'.
++    if n_epochs is None:
++        n_epochs = epochs_for(mse_weight, nll_weight)
+     set_seed(seed)
+     base_pool, instr_pool = load_or_pool_separate_poles(model, tokenizer, train_items, layer_idx, train_responses, cache_dir)
+     # See src/psr/conceptor/train.py's train_one_config for why this .to(device) is necessary --
+@@ -75,7 +89,7 @@ def train_one_config(
+ 
+     hidden_size = base_pool.shape[1]
+     gate = init_gate_state(hidden_size, device)
+-    optimizer = torch.optim.Adam(gate.parameters(), lr=lr, weight_decay=weight_decay)
++    optimizer = torch.optim.AdamW(gate.parameters(), lr=lr, weight_decay=weight_decay)
+     forward_fn = lambda pair: forward_with_gate_hook(model, gate, conceptor, mu_instr, delta_scale, layer_idx, pair["full_base"], pair["n_resp"])
+ 
+     wrapped_on_epoch_end = (lambda epoch, metrics: on_epoch_end(epoch, gate, conceptor, mu_instr, delta_scale, metrics)) if on_epoch_end else None
+@@ -83,8 +97,10 @@ def train_one_config(
+         model, tokenizer, forward_fn, optimizer, layer_idx, n_layers,
+         train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
+         mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
++        normalize_psi=normalize_psi,
+     )
+     return {
++        "completed_epochs": n_epochs,
+         "baseline_mse": baseline_metrics["mse"], "baseline_nll": baseline_metrics["nll"],
+         "final_mse": final_metrics["mse"], "final_nll": final_metrics["nll"],
+         "participation_ratio": pr,
+@@ -116,8 +132,8 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
+         with (adapter.RESULTS_DIR / "const_steer_config.json").open() as f:
+             layer_idx = json.load(f)["layer"]
+ 
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+ 
+     def write_checkpoint_and_log(gate_weight, gate_bias, gate_coeff_bias, conceptor, mu_instr, delta_scale, pr, baseline: dict, final: dict, completed_epochs) -> None:
+         torch.save({
+@@ -181,8 +197,8 @@ def sweep(
+ 
+     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
+     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+ 
+     checkpoints_by_point = {}
+ 
+@@ -231,7 +247,8 @@ def sweep(
+         "conceptor": winner["conceptor"], "mu_instr": winner["mu_instr"], "delta_scale": winner["delta_scale"],
+         "layer": best["layer"], "alpha": best["alpha"],
+         "mse_weight": best["mse_weight"], "nll_weight": best["nll_weight"],
+-        "participation_ratio": winner["participation_ratio"], "task": task, "completed_epochs": N_EPOCHS,
++        "participation_ratio": winner["participation_ratio"], "task": task,
++        "completed_epochs": winner["completed_epochs"],
+     }, out_probe_path)
+     print(f"wrote {out_probe_path} (best layer={best['layer']}, alpha={best['alpha']}, "
+           f"mse_weight={best['mse_weight']}, nll_weight={best['nll_weight']}, final_mse={best['final_mse']:.4f})")
+diff --git a/src/psr/conceptor/selfproj/train.py b/src/psr/conceptor/selfproj/train.py
+index fa1939f..4f8b77a 100644
+--- a/src/psr/conceptor/selfproj/train.py
++++ b/src/psr/conceptor/selfproj/train.py
+@@ -21,7 +21,7 @@ import os
+ import torch
+ 
+ from adapters.registry import get_adapter
+-from core.model_common import generate_response, load_model, num_layers
++from core.model_common import generate_response, load_model, num_layers, generate_response_with_meta
+ from core.generation_cache import load_or_compute_responses
+ from core.reproducibility import set_seed
+ from core.sweep import run_grid_sweep
+@@ -29,12 +29,21 @@ from steering.psr.conceptor.rank_diagnostic import participation_ratio
+ from steering.psr.conceptor.selfproj.logic import compute_delta_scale, forward_with_gate_hook
+ from steering.psr.data import load_or_pool_separate_poles
+ from steering.psr.gate import init_gate_state
++from steering.psr.reference_config import (
++    DEFAULT_LOSS_BALANCE,
++    N_EPOCHS_MSE,
++    WEIGHT_DECAY as REF_WEIGHT_DECAY,
++    epochs_for,
++    loss_balance,
++)
+ from steering.psr.training_loop import train_gate
+ 
+-N_EPOCHS = 3
++N_EPOCHS = N_EPOCHS_MSE  # reference: 15 for MSE, 7 for LL -- see epochs_for()
+ LR = float(os.environ.get("PSR_CONCEPTOR_SELFPROJ_LR", 1e-3))
+-WEIGHT_DECAY = 1e-4
+-REG_COEFF = float(os.environ.get("PSR_CONCEPTOR_SELFPROJ_REG_COEFF", 0.1))
++WEIGHT_DECAY = REF_WEIGHT_DECAY  # 1e-6; the reference's dataclass default of 1e-4 is never used
++LOSS_BALANCE = os.environ.get("PSR_CONCEPTOR_SELFPROJ_LOSS_BALANCE", DEFAULT_LOSS_BALANCE)
++REG_COEFF = float(os.environ.get("PSR_CONCEPTOR_SELFPROJ_REG_COEFF", loss_balance(LOSS_BALANCE)["reg_coeff"]))
++NORMALIZE_PSI = loss_balance(LOSS_BALANCE)["normalize_psi"]
+ # mse_weight/nll_weight are independent (see steering/psr/training_loop.py's module docstring).
+ MSE_WEIGHT = float(os.environ.get("PSR_CONCEPTOR_SELFPROJ_MSE_WEIGHT", 1.0))
+ NLL_WEIGHT = float(os.environ.get("PSR_CONCEPTOR_SELFPROJ_NLL_WEIGHT", 0.0))
+@@ -81,12 +90,17 @@ def train_one_config(
+     model, tokenizer, layer_idx: int, alpha: float, seed: int, n_layers: int, device: str,
+     train_items: list[dict], dev_items: list[dict], train_responses: dict, dev_responses: dict,
+     cache_dir, lr: float = LR, weight_decay: float = WEIGHT_DECAY, reg_coeff: float = REG_COEFF,
+-    n_epochs: int = N_EPOCHS, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
++    n_epochs: int | None = None, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
++    normalize_psi: bool = NORMALIZE_PSI,
+     on_epoch_end=None,
+ ) -> dict:
+     """One (layer, alpha) point. Returns {"skipped": True, ...} without training anything if
+     delta_scale is too small at this alpha (C indistinguishable from identity) -- same skip
+     condition the original percentile loop used, now reusable from sweep() too."""
++    # Reference epoch budget is objective-dependent (15 MSE / 7 LL). Training both endpoints
++    # for the same number of epochs confounds 'which objective wins' with 'which converged'.
++    if n_epochs is None:
++        n_epochs = epochs_for(mse_weight, nll_weight)
+     set_seed(seed)
+     base_pool, instr_pool = load_or_pool_separate_poles(model, tokenizer, train_items, layer_idx, train_responses, cache_dir)
+     # See src/psr/conceptor/train.py's train_one_config for why this .to(device) is necessary --
+@@ -108,7 +122,7 @@ def train_one_config(
+         return {"skipped": True, "delta_scale": delta_scale.item(), "participation_ratio": pr}
+ 
+     gate = init_gate_state(hidden_size, device)
+-    optimizer = torch.optim.Adam(gate.parameters(), lr=lr, weight_decay=weight_decay)
++    optimizer = torch.optim.AdamW(gate.parameters(), lr=lr, weight_decay=weight_decay)
+     forward_fn = lambda pair: forward_with_gate_hook(model, gate, conceptor, delta_scale, layer_idx, pair["full_base"], pair["n_resp"])
+ 
+     wrapped_on_epoch_end = (lambda epoch, metrics: on_epoch_end(epoch, gate, conceptor, delta_scale, metrics)) if on_epoch_end else None
+@@ -116,9 +130,11 @@ def train_one_config(
+         model, tokenizer, forward_fn, optimizer, layer_idx, n_layers,
+         train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
+         mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
++        normalize_psi=normalize_psi,
+     )
+     return {
+         "skipped": False,
++        "completed_epochs": n_epochs,
+         "baseline_mse": baseline_metrics["mse"], "baseline_nll": baseline_metrics["nll"],
+         "final_mse": final_metrics["mse"], "final_nll": final_metrics["nll"],
+         "delta_scale": delta_scale.item(), "participation_ratio": pr,
+@@ -145,8 +161,8 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
+         with (adapter.RESULTS_DIR / "const_steer_config.json").open() as f:
+             layer_idx = json.load(f)["layer"]
+ 
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+ 
+     base_pool, instr_pool = load_or_pool_separate_poles(model, tokenizer, train_items, layer_idx, train_responses, adapter.CACHE_DIR)
+     pool = torch.cat([base_pool, instr_pool], dim=0)
+@@ -225,8 +241,8 @@ def sweep(
+ 
+     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
+     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+ 
+     # alpha grid depends on the layer's own eigenvalue spectrum -- computed once per layer here,
+     # not once per (layer, alpha, loss-config) grid point, since it only depends on layer.
+diff --git a/src/psr/conceptor/train.py b/src/psr/conceptor/train.py
+index 3de2c27..3b84727 100644
+--- a/src/psr/conceptor/train.py
++++ b/src/psr/conceptor/train.py
+@@ -27,19 +27,28 @@ import os
+ import torch
+ 
+ from adapters.registry import get_adapter
+-from core.model_common import generate_response, load_model, num_layers
++from core.model_common import generate_response, load_model, num_layers, generate_response_with_meta
+ from core.generation_cache import load_or_compute_responses
+ from core.reproducibility import set_seed
+ from core.sweep import run_grid_sweep
+ from steering.psr.conceptor.direction import compute_conceptor, project_direction
+ from steering.psr.data import load_or_pool_prompt_last_token, load_or_pool_separate_poles
+ from steering.psr.gate import forward_with_gate_hook, init_gate_state
++from steering.psr.reference_config import (
++    DEFAULT_LOSS_BALANCE,
++    N_EPOCHS_MSE,
++    WEIGHT_DECAY as REF_WEIGHT_DECAY,
++    epochs_for,
++    loss_balance,
++)
+ from steering.psr.training_loop import train_gate
+ 
+-N_EPOCHS = 3
++N_EPOCHS = N_EPOCHS_MSE  # reference: 15 for MSE, 7 for LL -- see epochs_for()
+ LR = float(os.environ.get("PSR_CONCEPTOR_LR", 1e-3))
+-WEIGHT_DECAY = 1e-4
+-REG_COEFF = float(os.environ.get("PSR_CONCEPTOR_REG_COEFF", 0.1))
++WEIGHT_DECAY = REF_WEIGHT_DECAY  # 1e-6; the reference's dataclass default of 1e-4 is never used
++LOSS_BALANCE = os.environ.get("PSR_CONCEPTOR_LOSS_BALANCE", DEFAULT_LOSS_BALANCE)
++REG_COEFF = float(os.environ.get("PSR_CONCEPTOR_REG_COEFF", loss_balance(LOSS_BALANCE)["reg_coeff"]))
++NORMALIZE_PSI = loss_balance(LOSS_BALANCE)["normalize_psi"]
+ ALPHA = float(os.environ.get("PSR_CONCEPTOR_ALPHA", 4.0))
+ OUT_TAG = os.environ.get("PSR_CONCEPTOR_OUT_TAG", "")  # e.g. "_alpha8" for one-off sweep runs
+ # mse_weight/nll_weight are independent (see steering/psr/training_loop.py's module docstring).
+@@ -67,13 +76,18 @@ def train_one_config(
+     model, tokenizer, layer_idx: int, alpha: float, seed: int, n_layers: int, device: str,
+     train_items: list[dict], dev_items: list[dict], train_responses: dict, dev_responses: dict,
+     cache_dir, lr: float = LR, weight_decay: float = WEIGHT_DECAY, reg_coeff: float = REG_COEFF,
+-    n_epochs: int = N_EPOCHS, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
++    n_epochs: int | None = None, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
++    normalize_psi: bool = NORMALIZE_PSI,
+     on_epoch_end=None,
+ ) -> dict:
+     """Pools (or loads cached pooled) activations at layer_idx, builds C and the projected fixed
+     direction at the given alpha, then trains the gate on top of it. Returns dev metrics (JSON-safe)
+     plus the trained/derived tensors (not JSON-safe -- see proper/train.py's train_one_config for
+     the same split and why)."""
++    # Reference epoch budget is objective-dependent (15 MSE / 7 LL). Training both endpoints
++    # for the same number of epochs confounds 'which objective wins' with 'which converged'.
++    if n_epochs is None:
++        n_epochs = epochs_for(mse_weight, nll_weight)
+     set_seed(seed)
+     # The conceptor matrix C is built from RESPONSE-token bipolar activations (both poles pooled
+     # together) -- this matches the pre-refactor caveman-steer implementation exactly (its
+@@ -108,7 +122,7 @@ def train_one_config(
+ 
+     hidden_size = base_pool.shape[1]
+     gate = init_gate_state(hidden_size, device)
+-    optimizer = torch.optim.Adam(gate.parameters(), lr=lr, weight_decay=weight_decay)
++    optimizer = torch.optim.AdamW(gate.parameters(), lr=lr, weight_decay=weight_decay)
+     forward_fn = lambda pair: forward_with_gate_hook(model, gate, direction, layer_idx, pair["full_base"], pair["n_resp"])
+ 
+     wrapped_on_epoch_end = (lambda epoch, metrics: on_epoch_end(epoch, gate, direction, conceptor, metrics)) if on_epoch_end else None
+@@ -116,8 +130,10 @@ def train_one_config(
+         model, tokenizer, forward_fn, optimizer, layer_idx, n_layers,
+         train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
+         mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
++        normalize_psi=normalize_psi,
+     )
+     return {
++        "completed_epochs": n_epochs,
+         "baseline_mse": baseline_metrics["mse"], "baseline_nll": baseline_metrics["nll"],
+         "final_mse": final_metrics["mse"], "final_nll": final_metrics["nll"],
+         "weight": gate.weight.detach().cpu(), "bias": gate.bias.detach().cpu(),
+@@ -148,8 +164,8 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
+         with (adapter.RESULTS_DIR / "const_steer_config.json").open() as f:
+             layer_idx = json.load(f)["layer"]
+ 
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+ 
+     print(f"loading/pooling activations at layer {layer_idx} for the conceptor and diff-in-means direction")
+ 
+@@ -208,8 +224,8 @@ def sweep(
+ 
+     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
+     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+ 
+     checkpoints_by_point = {}
+ 
+@@ -250,7 +266,7 @@ def sweep(
+         "conceptor": winner["conceptor"], "direction": winner["direction"],
+         "layer": best["layer"], "alpha": best["alpha"],
+         "mse_weight": best["mse_weight"], "nll_weight": best["nll_weight"],
+-        "task": task, "completed_epochs": N_EPOCHS,
++        "task": task, "completed_epochs": winner["completed_epochs"],
+     }, out_probe_path)
+     print(f"wrote {out_probe_path} (best layer={best['layer']}, alpha={best['alpha']}, "
+           f"mse_weight={best['mse_weight']}, nll_weight={best['nll_weight']}, final_mse={best['final_mse']:.4f})")
+diff --git a/src/psr/old_baseline/train.py b/src/psr/old_baseline/train.py
+index 1590f49..c88c2ec 100644
+--- a/src/psr/old_baseline/train.py
++++ b/src/psr/old_baseline/train.py
+@@ -17,8 +17,8 @@ import torch.nn.functional as F
+ 
+ from adapters.registry import get_adapter
+ from core.reproducibility import set_seed
+-from core.generation_cache import load_or_compute_responses
+-from core.model_common import generate_response, load_model
++from core.generation_cache import load_or_compute_responses, response_text
++from core.model_common import generate_response, load_model, generate_response_with_meta
+ from steering.psr.old_baseline import PSRProbe
+ 
+ N_EPOCHS = 200
+@@ -32,7 +32,7 @@ def collect_fixed_pairs(model, tokenizer, items: list[dict], layer_idx: int, res
+     kept as-is here since replicating the original baseline faithfully is the whole point."""
+     xs, ys = [], []
+     for item in items:
+-        teacher_response = responses[str(item["id"])]
++        teacher_response = response_text(responses[str(item["id"])])
+         resp_ids = tokenizer(teacher_response, return_tensors="pt", add_special_tokens=False)["input_ids"].to(model.device)
+         if resp_ids.shape[1] == 0:
+             continue
+@@ -70,8 +70,8 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
+         with (adapter.RESULTS_DIR / "const_steer_config.json").open() as f:
+             layer_idx = json.load(f)["layer"]
+ 
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+ 
+     print(f"collecting fixed (x, y) pairs at layer {layer_idx} (offline, injection-layer only)")
+     x_train, y_train = collect_fixed_pairs(model, tokenizer, train_items, layer_idx, train_responses)
+diff --git a/src/psr/old_baseline/train_a_psr.py b/src/psr/old_baseline/train_a_psr.py
+index 824cb6b..164ed2d 100644
+--- a/src/psr/old_baseline/train_a_psr.py
++++ b/src/psr/old_baseline/train_a_psr.py
+@@ -11,8 +11,8 @@ import torch
+ import torch.nn.functional as F
+ 
+ from adapters.registry import get_adapter
+-from core.generation_cache import load_or_compute_responses
+-from core.model_common import generate_response, layer_indices_from_fractions, load_model
++from core.generation_cache import load_or_compute_responses, response_text
++from core.model_common import generate_response, layer_indices_from_fractions, load_model, generate_response_with_meta
+ from core.reproducibility import set_seed
+ from steering.psr.old_baseline import MultiLayerPSRProbe
+ 
+@@ -27,7 +27,7 @@ def collect_fixed_pairs_all_layers(model, tokenizer, items: list[dict], layer_in
+     xs = {l: [] for l in layer_indices}
+     ys = {l: [] for l in layer_indices}
+     for item in items:
+-        teacher_response = responses[str(item["id"])]
++        teacher_response = response_text(responses[str(item["id"])])
+         resp_ids = tokenizer(teacher_response, return_tensors="pt", add_special_tokens=False)["input_ids"].to(model.device)
+         if resp_ids.shape[1] == 0:
+             continue
+@@ -65,8 +65,8 @@ def main(task: str, seed: int = 42) -> None:
+     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
+     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
+ 
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+ 
+     print("collecting fixed (x, y) pairs at every candidate layer (offline, one pass per row)")
+     x_train, y_train = collect_fixed_pairs_all_layers(model, tokenizer, train_items, layer_indices, train_responses)
+diff --git a/src/psr/proper/train.py b/src/psr/proper/train.py
+index 3943ca6..eb04215 100644
+--- a/src/psr/proper/train.py
++++ b/src/psr/proper/train.py
+@@ -13,18 +13,27 @@ import os
+ import torch
+ 
+ from adapters.registry import get_adapter
+-from core.model_common import generate_response, load_model, num_layers
++from core.model_common import generate_response, load_model, num_layers, generate_response_with_meta
+ from core.generation_cache import load_or_compute_responses
+ from core.reproducibility import set_seed
+ from core.sweep import run_grid_sweep
+ from steering.psr.gate import forward_with_gate_hook, init_gate_state
+ from steering.psr.proper.direction import init_direction
++from steering.psr.reference_config import (
++    DEFAULT_LOSS_BALANCE,
++    N_EPOCHS_MSE,
++    WEIGHT_DECAY as REF_WEIGHT_DECAY,
++    epochs_for,
++    loss_balance,
++)
+ from steering.psr.training_loop import train_gate
+ 
+-N_EPOCHS = 3
++N_EPOCHS = N_EPOCHS_MSE  # reference: 15 for MSE, 7 for LL -- see epochs_for()
+ LR = float(os.environ.get("PSR_PROPER_LR", 1e-3))
+-WEIGHT_DECAY = 1e-4
+-REG_COEFF = float(os.environ.get("PSR_PROPER_REG_COEFF", 0.1))
++WEIGHT_DECAY = REF_WEIGHT_DECAY  # 1e-6; the reference's dataclass default of 1e-4 is never used
++LOSS_BALANCE = os.environ.get("PSR_PROPER_LOSS_BALANCE", DEFAULT_LOSS_BALANCE)
++REG_COEFF = float(os.environ.get("PSR_PROPER_REG_COEFF", loss_balance(LOSS_BALANCE)["reg_coeff"]))
++NORMALIZE_PSI = loss_balance(LOSS_BALANCE)["normalize_psi"]
+ # mse_weight/nll_weight are independent (see steering/psr/training_loop.py's module docstring for
+ # why): mse_weight=1.0, nll_weight=0.0 is pure MSE (the default -- every existing result
+ # reproduces unchanged unless these are explicitly set).
+@@ -59,7 +68,8 @@ def train_one_config(
+     model, tokenizer, layer_idx: int, seed: int, n_layers: int, hidden_size: int, device: str,
+     train_items: list[dict], dev_items: list[dict], train_responses: dict, dev_responses: dict,
+     lr: float = LR, weight_decay: float = WEIGHT_DECAY, reg_coeff: float = REG_COEFF,
+-    n_epochs: int = N_EPOCHS, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
++    n_epochs: int | None = None, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
++    normalize_psi: bool = NORMALIZE_PSI,
+     on_epoch_end=None,
+ ) -> dict:
+     """Builds and trains one gate+direction at one layer. Returns everything a caller might need:
+@@ -71,10 +81,14 @@ def train_one_config(
+     objects (not just metrics, unlike steering.psr.training_loop.train_gate's own on_epoch_end) --
+     that's what lets a caller checkpoint mid-training without this function needing to know
+     anything about checkpoint file format itself."""
++    # Reference epoch budget is objective-dependent (15 MSE / 7 LL). Training both endpoints
++    # for the same number of epochs confounds 'which objective wins' with 'which converged'.
++    if n_epochs is None:
++        n_epochs = epochs_for(mse_weight, nll_weight)
+     set_seed(seed)
+     gate = init_gate_state(hidden_size, device)
+     direction = init_direction(hidden_size, device)
+-    optimizer = torch.optim.Adam(gate.parameters() + [direction], lr=lr, weight_decay=weight_decay)
++    optimizer = torch.optim.AdamW(gate.parameters() + [direction], lr=lr, weight_decay=weight_decay)
+     forward_fn = lambda pair: forward_with_gate_hook(model, gate, direction, layer_idx, pair["full_base"], pair["n_resp"])
+ 
+     wrapped_on_epoch_end = (lambda epoch, metrics: on_epoch_end(epoch, gate, direction, metrics)) if on_epoch_end else None
+@@ -82,8 +96,10 @@ def train_one_config(
+         model, tokenizer, forward_fn, optimizer, layer_idx, n_layers,
+         train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
+         mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
++        normalize_psi=normalize_psi,
+     )
+     return {
++        "completed_epochs": n_epochs,
+         "baseline_mse": baseline_metrics["mse"], "baseline_nll": baseline_metrics["nll"],
+         "final_mse": final_metrics["mse"], "final_nll": final_metrics["nll"],
+         "weight": gate.weight.detach().cpu(), "bias": gate.bias.detach().cpu(),
+@@ -116,8 +132,8 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
+         with (adapter.RESULTS_DIR / "const_steer_config.json").open() as f:
+             layer_idx = json.load(f)["layer"]
+ 
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+     hidden_size = model.config.hidden_size
+ 
+     def write_checkpoint_and_log(gate_weight, gate_bias, gate_coeff_bias, direction, baseline: dict, final: dict, completed_epochs) -> None:
+@@ -183,8 +199,8 @@ def sweep(
+ 
+     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
+     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+ 
+     checkpoints_by_point = {}
+ 
+@@ -224,7 +240,7 @@ def sweep(
+     torch.save({
+         "weight": winner["weight"], "bias": winner["bias"], "coeff_bias": winner["coeff_bias"],
+         "direction": winner["direction"], "layer": best["layer"], "task": task,
+-        "mse_weight": best["mse_weight"], "nll_weight": best["nll_weight"], "completed_epochs": N_EPOCHS,
++        "mse_weight": best["mse_weight"], "nll_weight": best["nll_weight"], "completed_epochs": winner["completed_epochs"],
+     }, out_probe_path)
+     print(f"wrote {out_probe_path} (best layer={best['layer']}, mse_weight={best['mse_weight']}, "
+           f"nll_weight={best['nll_weight']}, final_mse={best['final_mse']:.4f})")
+diff --git a/src/psr/single_gate/train.py b/src/psr/single_gate/train.py
+index 2e4c086..9b1a276 100644
+--- a/src/psr/single_gate/train.py
++++ b/src/psr/single_gate/train.py
+@@ -45,17 +45,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+ 
+ from adapters.registry import get_adapter
+ from core.generation_cache import load_or_compute_responses
+-from core.model_common import generate_response, load_model, num_layers
++from core.model_common import generate_response, load_model, num_layers, generate_response_with_meta
+ from core.reproducibility import set_seed
+ from core.sweep import run_grid_sweep
+ from steering.psr.data import load_or_pool_prompt_last_token
+ from steering.psr.gate import forward_with_gate_hook, init_gate_state
++from steering.psr.reference_config import (
++    DEFAULT_LOSS_BALANCE,
++    N_EPOCHS_MSE,
++    WEIGHT_DECAY as REF_WEIGHT_DECAY,
++    epochs_for,
++    loss_balance,
++)
+ from steering.psr.training_loop import train_gate
+ 
+-N_EPOCHS = 3
++N_EPOCHS = N_EPOCHS_MSE  # reference: 15 for MSE, 7 for LL -- see epochs_for()
+ LR = float(os.environ.get("PSR_SG_LR", 1e-3))
+-WEIGHT_DECAY = 1e-4
+-REG_COEFF = float(os.environ.get("PSR_SG_REG_COEFF", 0.1))
++WEIGHT_DECAY = REF_WEIGHT_DECAY  # 1e-6; the reference's dataclass default of 1e-4 is never used
++LOSS_BALANCE = os.environ.get("PSR_SG_LOSS_BALANCE", DEFAULT_LOSS_BALANCE)
++REG_COEFF = float(os.environ.get("PSR_SG_REG_COEFF", loss_balance(LOSS_BALANCE)["reg_coeff"]))
++NORMALIZE_PSI = loss_balance(LOSS_BALANCE)["normalize_psi"]
+ MSE_WEIGHT = float(os.environ.get("PSR_SG_MSE_WEIGHT", 1.0))
+ NLL_WEIGHT = float(os.environ.get("PSR_SG_NLL_WEIGHT", 0.0))
+ OUT_TAG = os.environ.get("PSR_SG_OUT_TAG", "")
+@@ -84,18 +93,23 @@ def train_one_config(
+     model, tokenizer, layer_idx: int, seed: int, n_layers: int, hidden_size: int, device: str,
+     train_items: list[dict], dev_items: list[dict], train_responses: dict, dev_responses: dict,
+     cache_dir, lr: float = LR, weight_decay: float = WEIGHT_DECAY, reg_coeff: float = REG_COEFF,
+-    n_epochs: int = N_EPOCHS, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
++    n_epochs: int | None = None, mse_weight: float = MSE_WEIGHT, nll_weight: float = NLL_WEIGHT,
++    normalize_psi: bool = NORMALIZE_PSI,
+     on_epoch_end=None,
+ ) -> dict:
+     """Trains the gate on top of a frozen direction. Same return contract as proper/conceptor's
+     train_one_config: JSON-safe dev metrics plus the trained tensors in one dict."""
++    # Reference epoch budget is objective-dependent (15 MSE / 7 LL). Training both endpoints
++    # for the same number of epochs confounds 'which objective wins' with 'which converged'.
++    if n_epochs is None:
++        n_epochs = epochs_for(mse_weight, nll_weight)
+     set_seed(seed)
+     gate = init_gate_state(hidden_size, device)
+     direction = build_direction(model, tokenizer, train_items, layer_idx, cache_dir, device)
+ 
+     # Only the gate's parameters go to the optimizer -- `direction` is frozen. This single line is
+     # the entire difference from S-PSR, which additionally passes [direction] here.
+-    optimizer = torch.optim.Adam(gate.parameters(), lr=lr, weight_decay=weight_decay)
++    optimizer = torch.optim.AdamW(gate.parameters(), lr=lr, weight_decay=weight_decay)
+ 
+     forward_fn = lambda pair: forward_with_gate_hook(
+         model, gate, direction, layer_idx, pair["full_base"], pair["n_resp"]
+@@ -105,8 +119,10 @@ def train_one_config(
+         model, tokenizer, forward_fn, optimizer, layer_idx, n_layers,
+         train_items, dev_items, train_responses, dev_responses, n_epochs, reg_coeff,
+         mse_weight=mse_weight, nll_weight=nll_weight, on_epoch_end=wrapped_on_epoch_end,
++        normalize_psi=normalize_psi,
+     )
+     return {
++        "completed_epochs": n_epochs,
+         "baseline_mse": baseline_metrics["mse"], "baseline_nll": baseline_metrics["nll"],
+         "final_mse": final_metrics["mse"], "final_nll": final_metrics["nll"],
+         "weight": gate.weight.detach().cpu(), "bias": gate.bias.detach().cpu(),
+@@ -123,8 +139,8 @@ def _setup(task: str, device: str):
+         p.requires_grad_(False)
+     train_items = adapter.to_items(tokenizer, adapter.load_rows("train"))
+     dev_items = adapter.to_items(tokenizer, adapter.load_rows("dev"))
+-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
+-    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response)
++    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response_with_meta)
++    dev_responses = load_or_compute_responses(model, tokenizer, dev_items, adapter.CACHE_DIR / "teacher_responses_dev.json", generate_response_with_meta)
+     return adapter, model, tokenizer, num_layers(model), train_items, dev_items, train_responses, dev_responses
+ 
+ 
+@@ -134,7 +150,8 @@ def _save(out_path, result: dict, layer_idx: int, task: str, mse_weight: float,
+     torch.save({
+         "weight": result["weight"], "bias": result["bias"], "coeff_bias": result["coeff_bias"],
+         "direction": result["direction"], "layer": layer_idx, "task": task,
+-        "mse_weight": mse_weight, "nll_weight": nll_weight, "completed_epochs": N_EPOCHS,
++        "mse_weight": mse_weight, "nll_weight": nll_weight,
++        "completed_epochs": result["completed_epochs"],
+     }, out_path)
+ 
+ 
+diff --git a/steering/psr/data.py b/steering/psr/data.py
+index 925dfcf..58d14d7 100644
+--- a/steering/psr/data.py
++++ b/steering/psr/data.py
+@@ -5,15 +5,39 @@ contrastive training (task_matrix, projection) has no reason to import this.
+ """
+ import torch
+ 
++from core.generation_cache import normalize_cache_entry
+ 
+-def build_training_pair(model, tokenizer, item: dict, responses: dict) -> dict | None:
++
++def build_training_pair(model, tokenizer, item: dict, responses: dict, append_eos: bool = True) -> dict | None:
+     """item: {"id", "base_prompt", "terse_prompt"}. Returns None for empty-response items (skip,
+-    don't pad -- batch size is always 1 here, so there's no batching to preserve by padding)."""
+-    teacher_response = responses[str(item["id"])]
++    don't pad -- batch size is always 1 here, so there's no batching to preserve by padding).
++
++    APPENDS THE ASSISTANT TURN-END TOKEN to the teacher-forced response when the generation
++    terminated naturally. The reference constructs its training sequence with
++    apply_chat_template(..., add_generation_prompt=False) over a message list ending in the
++    assistant turn (tokenization_utils.create_prompt_and_answer), which emits that token as part
++    of the sequence. This project generates the response separately and decodes it with
++    skip_special_tokens=True, which strips it -- so without this step the response span contains
++    no stop token at all.
++
++    That gap matters more here than it would elsewhere: under the NLL objective the model is
++    never once asked to raise P(end-of-turn) at any position, and deciding when to stop is the
++    most direct mechanism by which a steering vector can shorten output. On a token-reduction
++    task, omitting it removes the training signal most aligned with the thing being measured.
++
++    Guarded on `finished`: appending a stop token to a response that was TRUNCATED at
++    max_new_tokens would teach the gate that an arbitrary cutoff is a valid stopping point.
++    Legacy cache entries report finished=None ("unknown") and are treated as not-finished."""
++    entry = normalize_cache_entry(responses[str(item["id"])])
++    teacher_response = entry["text"]
+     resp_ids = tokenizer(teacher_response, return_tensors="pt", add_special_tokens=False)["input_ids"].to(model.device)
+     if resp_ids.shape[1] == 0:
+         return None
+ 
++    if append_eos and entry["finished"] is True and tokenizer.eos_token_id is not None:
++        eos = torch.tensor([[tokenizer.eos_token_id]], device=resp_ids.device, dtype=resp_ids.dtype)
++        resp_ids = torch.cat([resp_ids, eos], dim=1)
++
+     base_ids = tokenizer(item["base_prompt"], return_tensors="pt")["input_ids"].to(model.device)
+     instr_ids = tokenizer(item["terse_prompt"], return_tensors="pt")["input_ids"].to(model.device)
+     return {
+diff --git a/steering/psr/gate.py b/steering/psr/gate.py
+index 50f1a92..f893c76 100644
+--- a/steering/psr/gate.py
++++ b/steering/psr/gate.py
+@@ -11,6 +11,7 @@ import torch.nn.functional as F
+ 
+ from core.model_common import get_decoder_layers
+ from steering.hooks import rewrap_hidden, unwrap_hidden
++from steering.psr.reference_config import USE_COEFF_BIAS
+ 
+ 
+ @dataclass
+@@ -25,13 +26,34 @@ class GateState:
+     coeff_bias: torch.Tensor   # (1,) -- learned additive offset on the coefficient
+ 
+     def parameters(self) -> list[torch.Tensor]:
+-        return [self.weight, self.bias, self.coeff_bias]
+-
+-
+-def init_gate_state(hidden_size: int, device: str, dtype: torch.dtype = torch.float32) -> GateState:
++        """Only tensors that actually require grad. coeff_bias is frozen at 0 by default (see
++        init_gate_state), and handing a requires_grad=False leaf to an optimizer is at best a
++        no-op and at worst an error depending on torch version -- so filter here rather than
++        making all seven call sites remember to."""
++        return [p for p in (self.weight, self.bias, self.coeff_bias) if p.requires_grad]
++
++
++def init_gate_state(
++    hidden_size: int,
++    device: str,
++    dtype: torch.dtype = torch.float32,
++    use_coeff_bias: bool = USE_COEFF_BIAS,
++) -> GateState:
++    """coeff_bias defaults to FROZEN AT ZERO. The parameter is faithful -- it is b_{m,l} in the
++    paper (Section 3.6) and the reference's FocusedSteeringModule computes
++    `user_steering_coeffs + steering_coeff_bias`, which is exactly this project's
++    `1.0 + coeff_bias` at alpha=1. But FocusedSteeredModelConfig's dataclass default of
++    use_steering_coeff_bias=True is never used in any reported experiment:
++    base_architecture_focused() sets it False, and experiments/llm_steer_instruct/eval.py sets
++    it False again. Training it is therefore an extra degree of freedom relative to every
++    published PSR number.
++
++    Kept as a flag rather than deleted so the ablation ("does a learned global scale help?") is
++    still one argument away, and so checkpoint format is unchanged -- coeff_bias is still saved,
++    it is simply always 0.0."""
+     weight = (torch.randn(hidden_size, 1, device=device, dtype=dtype) * 0.01).requires_grad_(True)
+     bias = torch.zeros(1, device=device, dtype=dtype).requires_grad_(True)
+-    coeff_bias = torch.zeros(1, device=device, dtype=dtype).requires_grad_(True)
++    coeff_bias = torch.zeros(1, device=device, dtype=dtype).requires_grad_(use_coeff_bias)
+     return GateState(weight=weight, bias=bias, coeff_bias=coeff_bias)
+ 
+ 
+@@ -41,10 +63,23 @@ def location_fit(gate: GateState, hidden: torch.Tensor) -> torch.Tensor:
+ 
+ 
+ def answer_only_mask(seq_len: int, n_resp: int, device) -> torch.Tensor:
+-    """True for the last n_resp positions (the response span). PSR's whole premise is selective
+-    intervention, so this is enforced directly rather than left for the gate to learn on its own."""
++    """True for the last n_resp + 1 positions: the FINAL PROMPT TOKEN plus the response span.
++
++    The +1 is not an off-by-one bug, it is the reference's definition. Their mask is
++    `token_positions >= last_input_token_positions` (constant_steering.py::compute_steering_mask,
++    the "answer_only" branch), and last_input_token_position is the index of the last prompt
++    token, not the first response token (tokenization_utils.compute_last_input_token_index
++    returns len(prompt_tokens) - 1). A `>=` against that index therefore includes it.
++
++    That position matters more than its single-token size suggests: it is the position whose
++    hidden state produces the first generated token. Excluding it -- as this project did before
++    2026-09-20 -- means the intervention never influences the decision that sets the tone for the
++    entire response.
++
++    steering/psr/nll.py::response_nll and subsequent_layers_mse use the same n_resp + 1 span, and
++    make_inference_hook steers the same position during prefill. All four must agree."""
+     positions = torch.arange(seq_len, device=device)
+-    return (positions >= (seq_len - n_resp)).view(1, seq_len, 1)
++    return (positions >= (seq_len - n_resp - 1)).view(1, seq_len, 1)
+ 
+ 
+ def coefficient(gate: GateState, hidden: torch.Tensor, mask: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+@@ -115,8 +150,8 @@ def subsequent_layers_mse(hidden_pred, hidden_target, layer_idx: int, n_resp: in
+     layer_idx+1 .. n_layers inclusive."""
+     total = torch.tensor(0.0, device=hidden_pred[0].device)
+     for idx in range(layer_idx + 1, n_layers + 1):
+-        pred = hidden_pred[idx][0, -n_resp:, :].float()
+-        target = hidden_target[idx][0, -n_resp:, :].float()
++        pred = hidden_pred[idx][0, -(n_resp + 1):, :].float()
++        target = hidden_target[idx][0, -(n_resp + 1):, :].float()
+         total = total + F.mse_loss(pred, target)
+     return total
+ 
+@@ -127,14 +162,35 @@ def collect_target_hidden_states(model, full_instr: torch.Tensor):
+ 
+ 
+ def make_inference_hook(gate: GateState, direction: torch.Tensor):
+-    """Inference-time hook for use with steering.hooks.steering_hook. Distinguishes prefill (full
+-    prompt, seq_len > 1 -- don't steer, it's all prompt) from generation steps (seq_len == 1 -- the
+-    single new token IS the response by construction, always steer) -- same is_generating logic
+-    Nokia's reference implementation uses, adapted to HF's KV-cache generation loop."""
++    """Inference-time hook for use with steering.hooks.steering_hook.
++
++    PREFILL IS NOT SKIPPED. The reference does not skip it either -- this was a misreading of
++    their `is_generating` flag that stood in this file until 2026-09-20. Their logic is:
++
++        is_generating = max_seq_len == 1
++        steering_mask = compute_steering_mask(is_generating, ..., self.config.steering_location)
++
++    When is_generating is False (prefill), they do not bail out; they apply the positional mask,
++    and under steering_location="answer_only" that mask is `pos >= last_input_token_position`,
++    which still selects the FINAL PROMPT TOKEN. So the reference steers
++    {last prompt token} u {every generated token}. Skipping prefill entirely dropped the first
++    of those, and left training (which does steer it, via answer_only_mask) disagreeing with
++    inference.
++
++    Indexing -1 is safe for batched prefill because steering/batch_routing.py::left_pad_batch
++    left-pads, so the final column is a real token for every row. Under right padding it would
++    be a pad token for the shorter rows -- do not change the padding side without revisiting
++    this."""
+     @torch.no_grad()
+     def hook_fn(hidden: torch.Tensor) -> torch.Tensor:
+         if hidden.shape[1] > 1:
+-            return hidden
++            # Prefill: steer only the last prompt position.
++            tail = hidden[:, -1:, :]
++            coeff, _ = coefficient(gate, tail, mask=None)
++            out = hidden.clone()
++            out[:, -1:, :] = tail + (coeff * direction.to(hidden.dtype)).to(hidden.dtype)
++            return out
++        # Decode: the single new token IS a response token by construction.
+         coeff, _ = coefficient(gate, hidden, mask=None)
+         return hidden + (coeff * direction.to(hidden.dtype)).to(hidden.dtype)
+     return hook_fn
+diff --git a/steering/psr/multi_gate.py b/steering/psr/multi_gate.py
+index b70469b..b0aae7f 100644
+--- a/steering/psr/multi_gate.py
++++ b/steering/psr/multi_gate.py
+@@ -98,10 +98,10 @@ def make_multi_inference_hooks(
+ ) -> dict[int, callable]:
+     """Inference-time counterpart, shaped for steering.hooks.multi_steering_hook (which takes a
+     {layer_idx: hook_fn} dict). Mirrors steering/psr/gate.py's make_inference_hook exactly,
+-    including its prefill-vs-decode distinction: seq_len > 1 means we're processing the prompt
+-    (don't steer), seq_len == 1 means the single new token IS the response by construction (always
+-    steer) -- the same is_generating logic Nokia's FocusedSteeringModule.forward uses, adapted to
+-    HF's KV-cached generation loop.
++    including its prefill handling -- see that function's docstring for why prefill steers the
++    final prompt token rather than being skipped. The two must stay identical: a divergence here
++    would make A-PSR and S-PSR incomparable at inference for reasons unrelated to the
++    architecture under test.
+ 
+     No torch.no_grad() decorator here on purpose -- make_inference_hook has one, but it's applied
+     at the hook level there; callers of this function are expected to already be inside
+@@ -113,7 +113,12 @@ def make_multi_inference_hooks(
+         def _make_hook(gate: GateState, direction: torch.Tensor):
+             def hook_fn(hidden: torch.Tensor) -> torch.Tensor:
+                 if hidden.shape[1] > 1:
+-                    return hidden
++                    # Prefill: steer only the last prompt position (left-padded, so -1 is real).
++                    tail = hidden[:, -1:, :]
++                    coeff, _ = coefficient(gate, tail, mask=None)
++                    out = hidden.clone()
++                    out[:, -1:, :] = tail + (coeff * direction.to(hidden.dtype)).to(hidden.dtype)
++                    return out
+                 coeff, _ = coefficient(gate, hidden, mask=None)
+                 return hidden + (coeff * direction.to(hidden.dtype)).to(hidden.dtype)
+ 
+diff --git a/steering/psr/nll.py b/steering/psr/nll.py
+index 2088691..3cc69ce 100644
+--- a/steering/psr/nll.py
++++ b/steering/psr/nll.py
+@@ -19,30 +19,52 @@ import torch
+ import torch.nn.functional as F
+ 
+ 
+-def response_nll(logits: torch.Tensor, input_ids: torch.Tensor, n_resp: int, reduction: str = "sum") -> torch.Tensor:
++def response_nll(logits: torch.Tensor, input_ids: torch.Tensor, n_resp: int, reduction: str = "mean") -> torch.Tensor:
+     """logits: (1, seq_len, vocab) from the SAME corrected forward pass forward_with_gate_hook
+     already ran (h'_x is baked into these logits, not recomputed separately -- so this is free
+     besides one extra cross_entropy call). input_ids: (1, seq_len), the same sequence that was fed
+     in (prompt + response tokens). n_resp: length of the response span at the END of input_ids.
+ 
+-    Standard teacher-forced next-token cross-entropy, restricted to the response span: the token at
+-    position p (one of the last n_resp positions) is "predicted" by logits at position p-1, so the
+-    relevant slice is logits[:, -(n_resp+1):-1, :] against targets input_ids[:, -n_resp:].
++    Standard teacher-forced next-token cross-entropy over the STEERED SPAN, which is the last
++    prompt token plus the n_resp response tokens -- NOT the response tokens alone. The reference
++    builds its labels as `where(token_positions >= last_input_token_position, input_ids, -100)`
++    (steering_base.py collate_fn), and last_input_token_position is the index of the FINAL PROMPT
++    token (tokenization_utils.compute_last_input_token_index returns len(prompt_tokens) - 1).
++    So their supervised span is n_resp + 1 targets, and it lines up exactly with the span
++    steering/psr/gate.py::answer_only_mask steers. Keeping the loss span and the steering span
++    identical is the point; they were off by one from each other before 2026-09-20.
+ 
+-    reduction="sum" matches the literal equation (a sum over t, not a mean) -- deliberately, since
+-    fidelity to the paper's actual formula is the point of this fix (see finding #1 in the project
+-    handoff: the original port's fidelity gaps were exactly this kind of "close enough" substitution).
+-    Note this DOES make the raw loss value scale with n_resp (longer responses contribute a larger
+-    sum) -- pass reduction="mean" instead if you want a length-normalized variant for comparing
+-    across items of very different response lengths; "sum" is what Eq. (4) actually specifies.
++    A target at position p is predicted by logits at position p-1, so the slice is
++    logits[:, -(n_resp+2):-1, :] against targets input_ids[:, -(n_resp+1):].
++
++    reduction DEFAULTS TO "mean", not "sum", even though Eq. (4) is written as a sum over t.
++    This is a deliberate choice of the reference IMPLEMENTATION over the paper's notation, for
++    two reasons:
++
++    1. The reference computes this loss as HuggingFace's causal-LM loss
++       (`model_outputs.clm_outputs.loss` in steering_base.py::forward_pass_steered_model, with
++       labels masked to -100 outside the response span). That loss is a MEAN over non-ignored
++       tokens. Their lr=1e-3 was tuned against a mean-reduced loss; pairing that same lr with a
++       sum reduction multiplies the effective learning rate by roughly the response length
++       (~60x here). Adopting their lr but not their reduction is LESS faithful than adopting
++       both, not more.
++    2. Under "sum", each training example is weighted by however long its teacher response
++       happened to be. In a study whose dependent variable IS output length, that lets response
++       length silently reweight the training signal.
++
++    "sum" remains available for diagnostics, and eval_dev_metrics reports both so that
++    previously-logged sweep rows stay comparable.
+     """
+     if n_resp < 1:
+         raise ValueError(f"response_nll needs n_resp >= 1, got {n_resp}")
+     seq_len = input_ids.shape[1]
+-    if n_resp + 1 > seq_len:
+-        raise ValueError(f"n_resp={n_resp} leaves no context token before the response span (seq_len={seq_len})")
++    if n_resp + 2 > seq_len:
++        raise ValueError(
++            f"n_resp={n_resp} leaves no context token before the steered span "
++            f"(seq_len={seq_len}); the span is n_resp+1 tokens and needs one more for context"
++        )
+ 
+-    shift_logits = logits[:, -(n_resp + 1):-1, :].float()
+-    shift_targets = input_ids[:, -n_resp:]
++    shift_logits = logits[:, -(n_resp + 2):-1, :].float()
++    shift_targets = input_ids[:, -(n_resp + 1):]
+     vocab = shift_logits.shape[-1]
+     return F.cross_entropy(shift_logits.reshape(-1, vocab), shift_targets.reshape(-1), reduction=reduction)
+diff --git a/steering/psr/reference_config.py b/steering/psr/reference_config.py
+new file mode 100644
+index 0000000..9a2b6df
+--- /dev/null
++++ b/steering/psr/reference_config.py
+@@ -0,0 +1,97 @@
++"""The hyperparameters Heyman & Vandeputte ACTUALLY RAN, in one place.
++
++Sourced from Nokia-Bell-Labs/steer-like-the-llm:
++  - src/ase/experiment_utils/default_model_configs.py  (epochs, lr, weight_decay, objectives)
++  - experiments/llm_steer_instruct/eval.py             (the IFEval per-benchmark overrides)
++  - src/ase/steering/steering_base.py                  (SteeringTrainingArguments, LossSpecification)
++
++WHY THIS FILE EXISTS: these values were previously duplicated as module-level constants across
++six trainers (proper, all_layer, single_gate, clamp_gate, conceptor, conceptor/matrix,
++conceptor/selfproj), several of which had silently drifted from the reference. A shared module
++makes "which hyperparameters is this project claiming to replicate" answerable by reading one
++file, and makes drift impossible rather than merely discouraged.
++
++IMPORTANT DISTINCTION, because it bit this project once already: the reference's
++`SteeringTrainingArguments` DATACLASS DEFAULT for weight_decay is 1e-4, but every actual
++experiment config overrides it to 1e-6. Reading the dataclass and reading the experiments gives
++two different answers; the experiments are what produced the paper's numbers. Same trap applies
++to FocusedSteeredModelConfig.use_steering_coeff_bias (dataclass default True, every experiment
++False).
++"""
++
++# --- Optimizer / schedule (default_model_configs.py) ---------------------------------------
++# Identical across every objective and benchmark in the reference.
++LR = 1e-3
++WEIGHT_DECAY = 1e-6          # NOT the dataclass default of 1e-4 -- see module docstring
++OPTIMIZER = "adamw"          # optim.AdamW, not Adam: decoupled decay
++LR_SCHEDULE = "linear"       # get_scheduler("linear", num_warmup_steps=0, num_training_steps=N)
++DATA_SHUFFLE_SEED = 123      # SteeringTrainingArguments.data_shuffle_seed
++
++# --- Epochs are OBJECTIVE-DEPENDENT ---------------------------------------------------------
++# training_args_focused_psi() -> epochs=15 ; training_args_focused_LL() -> epochs=7.
++# This asymmetry is the authors' own evidence that the MSE objective converges more slowly than
++# loglikelihood. Training both for the same budget (this project previously used 3 for both)
++# confounds "which objective is better" with "which objective converged".
++N_EPOCHS_MSE = 15
++N_EPOCHS_LL = 7
++
++
++def epochs_for(mse_weight: float, nll_weight: float) -> int:
++    """Reference epoch budget for a (mse_weight, nll_weight) endpoint. Only the two
++    mutually-exclusive endpoints are reference configurations; a blend is this project's own
++    extension (the reference's `combined` objective) and has no published epoch count, so it
++    falls back to the longer MSE budget."""
++    if nll_weight > 0.0 and mse_weight == 0.0:
++        return N_EPOCHS_LL
++    return N_EPOCHS_MSE
++
++
++# --- The reg / normalization PACKAGE ---------------------------------------------------------
++# regularization_coefficient and normalize_psi_loss are NOT independent knobs. Normalization
++# exists solely to fix the MSE:regularization ratio (raw MSE magnitude varies substantially by
++# layer and model, so without it that ratio is arbitrary and layer-dependent). Consequences:
++#
++#   reg ON  + normalize ON   -> coherent. The persona-vectors / AxBench configuration.
++#   reg OFF + normalize OFF  -> coherent. The IFEval configuration (regularization_coefficient
++#                               =None in experiments/llm_steer_instruct/eval.py). With a
++#                               single-term loss, normalization is a pure LR rescale, so leaving
++#                               it off keeps the reference LR of 1e-3 meaning what it meant when
++#                               they tuned it.
++#   reg ON  + normalize OFF  -> INCOHERENT. Arbitrary, layer-dependent loss balance. (This was
++#                               this project's state before 2026-09-20.)
++#   reg OFF + normalize ON   -> INCOHERENT. Silently trains at 1e-3/avg_psi instead of 1e-3.
++#
++# Exposed as named packages rather than two booleans so the incoherent cells aren't reachable
++# by accident.
++LOSS_BALANCE_PACKAGES = {
++    # Instruction-following. The closest analogue to caveman, and the default here.
++    "ifeval": {"reg_coeff": 0.0, "normalize_psi": False},
++    # Persona vectors / AxBench.
++    "persona": {"reg_coeff": 0.1, "normalize_psi": True},
++}
++DEFAULT_LOSS_BALANCE = "ifeval"
++
++
++def loss_balance(package: str = DEFAULT_LOSS_BALANCE) -> dict:
++    if package not in LOSS_BALANCE_PACKAGES:
++        raise ValueError(
++            f"unknown loss-balance package {package!r}; expected one of "
++            f"{sorted(LOSS_BALANCE_PACKAGES)}. These are deliberately packages rather than "
++            f"independent flags -- see this module's docstring for why the mixed settings are "
++            f"incoherent."
++        )
++    return dict(LOSS_BALANCE_PACKAGES[package])
++
++
++# --- Architecture flags that every reported experiment sets -----------------------------------
++# FocusedSteeredModelConfig's dataclass default is use_steering_coeff_bias=True, but
++# base_architecture_focused() sets it False, and the IFEval config re-asserts False. The
++# parameter itself IS faithful (it is b_{m,l} in paper Section 3.6, and the reference computes
++# `user_steering_coeffs + steering_coeff_bias`, which equals this project's `1.0 + coeff_bias`
++# at alpha=1) -- it is simply disabled in every result the paper reports.
++USE_COEFF_BIAS = False
++
++# steering_location: "answer_only" in the dataclass default, in IFEval, and in AxBench;
++# "question_and_answer" only in the persona-vectors eval. Kept here for documentation; the
++# actual masking lives in steering/psr/gate.py::answer_only_mask.
++STEERING_LOCATION = "answer_only"
+diff --git a/steering/psr/training_loop.py b/steering/psr/training_loop.py
+index 7efd66c..d2680d2 100644
+--- a/steering/psr/training_loop.py
++++ b/steering/psr/training_loop.py
+@@ -26,20 +26,27 @@ Dev MSE and dev NLL are ALWAYS both computed and reported (regardless of either
+ diagnostics -- cheap, and directly useful for the "what does pure-NLL training do to the MSE
+ metric, and vice versa" question a real MSE-vs-LL ablation needs to answer.
+ """
++import random
++
+ import torch
++from transformers import get_scheduler
+ 
+ from steering.psr.data import build_training_pair
+ from steering.psr.gate import collect_target_hidden_states, regularization_loss, subsequent_layers_mse
+ from steering.psr.nll import response_nll
++from steering.psr.reference_config import DATA_SHUFFLE_SEED
+ 
+ 
+ @torch.no_grad()
+ def eval_dev_metrics(model, tokenizer, forward_fn, layer_idx: int, n_layers: int, dev_items: list[dict], dev_responses: dict) -> dict:
+-    """Returns {"mse": ..., "nll": ...}, each the mean over dev items (NLL per-item uses
+-    reduction="sum" over response tokens, same as the training loss below, then averaged across
+-    items -- i.e. "mean total NLL per response", not per-token, matching how mse is already
+-    averaged as "mean total subsequent-layers MSE per response")."""
+-    mse_losses, nll_losses = [], []
++    """Returns {"mse": ..., "nll": ..., "nll_sum": ...}, each the mean over dev items.
++
++    "nll" is now MEAN-reduced (per-token), matching what the training loss optimizes as of
++    2026-09-20 -- see steering/psr/nll.py for why the reference's mean reduction beats the
++    paper's sum notation. "nll_sum" preserves the old sum-reduced number so rows logged in
++    psr_proper_sweep.jsonl before that change remain comparable; it is a diagnostic only and is
++    never optimized."""
++    mse_losses, nll_losses, nll_sum_losses = [], [], []
+     for item in dev_items:
+         pair = build_training_pair(model, tokenizer, item, dev_responses)
+         if pair is None:
+@@ -47,14 +54,22 @@ def eval_dev_metrics(model, tokenizer, forward_fn, layer_idx: int, n_layers: int
+         target = collect_target_hidden_states(model, pair["full_instr"])
+         pred, logits, _ = forward_fn(pair)
+         mse_losses.append(subsequent_layers_mse(pred, target, layer_idx, pair["n_resp"], n_layers).item())
+-        nll_losses.append(response_nll(logits, pair["full_base"], pair["n_resp"]).item())
+-    return {"mse": sum(mse_losses) / len(mse_losses), "nll": sum(nll_losses) / len(nll_losses)}
++        nll_losses.append(response_nll(logits, pair["full_base"], pair["n_resp"], reduction="mean").item())
++        nll_sum_losses.append(response_nll(logits, pair["full_base"], pair["n_resp"], reduction="sum").item())
++    n = len(mse_losses)
++    return {
++        "mse": sum(mse_losses) / n,
++        "nll": sum(nll_losses) / n,
++        "nll_sum": sum(nll_sum_losses) / n,
++    }
+ 
+ 
+ def train_gate(
+     model, tokenizer, forward_fn, optimizer, layer_idx: int, n_layers: int,
+     train_items: list[dict], dev_items: list[dict], train_responses: dict, dev_responses: dict,
+-    n_epochs: int, reg_coeff: float, mse_weight: float = 1.0, nll_weight: float = 0.0, on_epoch_end=None,
++    n_epochs: int, reg_coeff: float, mse_weight: float = 1.0, nll_weight: float = 0.0,
++    on_epoch_end=None, normalize_psi: bool = False, data_shuffle_seed: int = DATA_SHUFFLE_SEED,
++    use_lr_schedule: bool = True,
+ ) -> tuple[dict, dict]:
+     """Returns (baseline_metrics, final_metrics), each a {"mse": float, "nll": float} dict.
+     on_epoch_end(epoch, dev_metrics), if given, runs after every epoch with that same dict shape --
+@@ -64,24 +79,55 @@ def train_gate(
+     mse_weight=0.0 means the MSE term contributes NO gradient at all (not just a small one) --
+     subsequent_layers_mse is still COMPUTED (dev metrics always report it), just multiplied by
+     zero before being added to the backprop loss, which is exactly "pure NLL training" rather than
+-    "mostly NLL training with a token gesture at MSE."."""
++    "mostly NLL training with a token gesture at MSE.".
++
++    normalize_psi divides the MSE term by its own pre-training value, reproducing the reference's
++    LossSpecification(normalize_psi_loss=True). It is COUPLED to reg_coeff and should not be set
++    independently -- see steering/psr/reference_config.LOSS_BALANCE_PACKAGES for why the mixed
++    settings are incoherent. Callers should pass both from reference_config.loss_balance().
++
++    Data is shuffled each epoch from a seeded RNG, matching the reference's
++    DataLoader(shuffle=True, generator=manual_seed(123)). With batch size 1 and a handful of
++    epochs, a fixed item order lets the last items seen disproportionately determine the final
++    weights.
++
++    LR follows a linear decay to zero with no warmup over the full run, matching the reference's
++    get_scheduler("linear", num_warmup_steps=0, num_training_steps=total_steps)."""
+     baseline_metrics = eval_dev_metrics(model, tokenizer, forward_fn, layer_idx, n_layers, dev_items, dev_responses)
+ 
++    # Normalizer is fixed once, BEFORE training, from the same dev-set MSE the reference uses as
++    # its average_psi_before_training. Recomputing it per epoch would make the loss a moving
++    # target and silently flatten any real improvement.
++    psi_norm = 1.0
++    if normalize_psi:
++        psi_norm = baseline_metrics["mse"] if baseline_metrics["mse"] > 0 else 1.0
++
++    total_steps = max(1, n_epochs * len(train_items))
++    lr_scheduler = (
++        get_scheduler("linear", optimizer=optimizer, num_warmup_steps=0, num_training_steps=total_steps)
++        if use_lr_schedule else None
++    )
++    rng = random.Random(data_shuffle_seed)
++
+     for epoch in range(n_epochs):
+-        for item in train_items:
++        epoch_items = list(train_items)
++        rng.shuffle(epoch_items)
++        for item in epoch_items:
+             pair = build_training_pair(model, tokenizer, item, train_responses)
+             if pair is None:
+                 continue
+             target = collect_target_hidden_states(model, pair["full_instr"])
+             pred, logits, fit = forward_fn(pair)
+             loss = (
+-                mse_weight * subsequent_layers_mse(pred, target, layer_idx, pair["n_resp"], n_layers)
++                mse_weight * (subsequent_layers_mse(pred, target, layer_idx, pair["n_resp"], n_layers) / psi_norm)
+                 + regularization_loss(fit, reg_coeff)
+                 + nll_weight * response_nll(logits, pair["full_base"], pair["n_resp"])
+             )
+             optimizer.zero_grad()
+             loss.backward()
+             optimizer.step()
++            if lr_scheduler is not None:
++                lr_scheduler.step()
+ 
+         dev_metrics = eval_dev_metrics(model, tokenizer, forward_fn, layer_idx, n_layers, dev_items, dev_responses)
+         if on_epoch_end:
+diff --git a/tests/test_reference_config_fidelity.py b/tests/test_reference_config_fidelity.py
+new file mode 100644
+index 0000000..01ea771
+--- /dev/null
++++ b/tests/test_reference_config_fidelity.py
+@@ -0,0 +1,103 @@
++"""Locks in the fidelity fixes applied 2026-09-20 after diffing against
++Nokia-Bell-Labs/steer-like-the-llm. Each test names the reference file it encodes, so that if a
++future change reintroduces one of these gaps the failure says WHY it's a gap rather than just
++that a number moved.
++"""
++import sys
++from pathlib import Path
++
++import pytest
++import torch
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++from steering.psr.gate import GateState, coefficient, init_gate_state
++from steering.psr.reference_config import (
++    LOSS_BALANCE_PACKAGES,
++    N_EPOCHS_LL,
++    N_EPOCHS_MSE,
++    USE_COEFF_BIAS,
++    WEIGHT_DECAY,
++    epochs_for,
++    loss_balance,
++)
++
++
++def test_weight_decay_is_the_experiment_value_not_the_dataclass_default():
++    """SteeringTrainingArguments' dataclass default is 1e-4, but every config in
++    default_model_configs.py overrides it to 1e-6. The experiments are what produced the paper's
++    numbers."""
++    assert WEIGHT_DECAY == 1e-6
++
++
++def test_epoch_budget_is_objective_dependent():
++    """training_args_focused_psi() -> epochs=15 ; training_args_focused_LL() -> epochs=7.
++    Training both endpoints for the same budget confounds 'which objective is better' with
++    'which objective converged', which is exactly the confound that made finding F5 unsafe."""
++    assert N_EPOCHS_MSE == 15
++    assert N_EPOCHS_LL == 7
++    assert epochs_for(mse_weight=1.0, nll_weight=0.0) == N_EPOCHS_MSE
++    assert epochs_for(mse_weight=0.0, nll_weight=1.0) == N_EPOCHS_LL
++
++
++def test_blended_loss_falls_back_to_the_longer_budget():
++    """A blend is the reference's `combined` objective, which has no published epoch count."""
++    assert epochs_for(mse_weight=1.0, nll_weight=0.5) == N_EPOCHS_MSE
++
++
++def test_coeff_bias_is_frozen_by_default_and_absent_from_the_optimizer():
++    """The parameter is faithful (b_{m,l}, paper Section 3.6) but every reported experiment sets
++    use_steering_coeff_bias=False -- both base_architecture_focused() and the IFEval override."""
++    assert USE_COEFF_BIAS is False
++    gate = init_gate_state(hidden_size=8, device="cpu")
++    assert gate.coeff_bias.requires_grad is False
++    assert gate.coeff_bias.item() == 0.0
++    params = gate.parameters()
++    assert len(params) == 2, "a frozen coeff_bias must not be handed to the optimizer"
++    assert all(p.requires_grad for p in params)
++
++
++def test_coeff_bias_can_still_be_enabled_for_the_ablation():
++    gate = init_gate_state(hidden_size=8, device="cpu", use_coeff_bias=True)
++    assert gate.coeff_bias.requires_grad is True
++    assert len(gate.parameters()) == 3
++
++
++def test_coefficient_formula_matches_reference_at_alpha_one():
++    """Reference: desired_concept_presence = user_steering_coeffs + steering_coeff_bias, then
++    steering_coefficients = desired_concept_presence * location_fit. At alpha=1 (which the paper
++    fixes for IFEval, Section 4.3) that is exactly (1 + coeff_bias) * fit."""
++    gate = GateState(
++        weight=torch.ones(4, 1) * 0.5,
++        bias=torch.tensor([0.0]),
++        coeff_bias=torch.tensor([0.25]),
++    )
++    hidden = torch.ones(1, 2, 4)
++    coeff, fit = coefficient(gate, hidden, mask=None)
++    assert torch.allclose(coeff, (1.0 + 0.25) * fit)
++
++
++@pytest.mark.parametrize("package", sorted(LOSS_BALANCE_PACKAGES))
++def test_loss_balance_packages_are_internally_coherent(package):
++    """reg and normalization are coupled: normalization exists only to fix the MSE:reg ratio.
++    reg on without normalization is an arbitrary layer-dependent balance; normalization without
++    reg is a silent LR rescale. Both packages must therefore agree on the two flags."""
++    cfg = loss_balance(package)
++    assert (cfg["reg_coeff"] > 0) == cfg["normalize_psi"]
++
++
++def test_ifeval_package_disables_both():
++    """experiments/llm_steer_instruct/eval.py sets regularization_coefficient=None. This is the
++    closest analogue to the caveman task and therefore the project default."""
++    assert loss_balance("ifeval") == {"reg_coeff": 0.0, "normalize_psi": False}
++
++
++def test_persona_package_enables_both():
++    """base_architecture_focused() uses regularization_coefficient=0.1, and
++    training_args_focused_psi() uses normalize_psi_loss=True."""
++    assert loss_balance("persona") == {"reg_coeff": 0.1, "normalize_psi": True}
++
++
++def test_unknown_package_is_rejected_rather_than_silently_defaulted():
++    with pytest.raises(ValueError, match="unknown loss-balance package"):
++        loss_balance("reg_on_normalize_off")
+diff --git a/tests/test_steering_psr_gate.py b/tests/test_steering_psr_gate.py
+index 89729ce..2b88c7e 100644
+--- a/tests/test_steering_psr_gate.py
++++ b/tests/test_steering_psr_gate.py
+@@ -24,9 +24,14 @@ from steering.psr.nll import response_nll
+ from tests.fakes import make_fake_model_and_tokenizer
+ 
+ 
+-def test_answer_only_mask_shape_and_values():
++def test_answer_only_mask_covers_last_prompt_token_plus_response():
++    """The steered span is n_resp + 1 positions, not n_resp. The reference's mask is
++    `token_positions >= last_input_token_position`, and that index is the LAST PROMPT TOKEN
++    (tokenization_utils.compute_last_input_token_index -> len(prompt_tokens) - 1), so `>=`
++    includes it. With seq_len=6 and n_resp=3 the response is positions 3,4,5 and the final
++    prompt token is position 2."""
+     mask = answer_only_mask(seq_len=6, n_resp=3, device="cpu")
+-    assert mask.tolist() == [[[False], [False], [False], [True], [True], [True]]]
++    assert mask.tolist() == [[[False], [False], [True], [True], [True], [True]]]
+ 
+ 
+ def test_location_fit_matches_manual_relu_computation():
+@@ -39,12 +44,14 @@ def test_location_fit_matches_manual_relu_computation():
+ 
+ 
+ def test_coefficient_masking_zeroes_prompt_span():
++    """Everything strictly before the final prompt token is hard-zeroed; the final prompt token
++    and the response span both fire. See test_answer_only_mask_covers_last_prompt_token_plus_response."""
+     gate = GateState(weight=torch.ones(16, 1) * 0.5, bias=torch.tensor([0.1]), coeff_bias=torch.tensor([0.0]))
+     hidden = torch.ones(1, 6, 16)
+     mask = answer_only_mask(6, 3, "cpu")
+     coeff, fit = coefficient(gate, hidden, mask)
+-    assert torch.all(fit[:, :3, :] == 0), "prompt-span positions should be hard-zeroed by the mask"
+-    assert torch.all(fit[:, 3:, :] > 0), "response-span positions should be nonzero"
++    assert torch.all(fit[:, :2, :] == 0), "positions before the final prompt token should be hard-zeroed"
++    assert torch.all(fit[:, 2:, :] > 0), "final prompt token + response span should be nonzero"
+ 
+ 
+ def test_regularization_penalizes_all_zero_gate():
+@@ -150,13 +157,28 @@ def test_response_nll_matches_manual_shifted_cross_entropy():
+ 
+     got = response_nll(logits, input_ids, n_resp, reduction="sum")
+ 
++    # Span is the last prompt token + the n_resp response tokens, matching answer_only_mask and
++    # the reference's label mask (`>= last_input_token_position`).
+     expected = torch.zeros(())
+-    for t in range(seq_len - n_resp, seq_len):
++    for t in range(seq_len - n_resp - 1, seq_len):
+         log_probs = torch.log_softmax(logits[0, t - 1], dim=-1)
+         expected = expected - log_probs[input_ids[0, t]]
+     assert torch.allclose(got, expected, atol=1e-5)
+ 
+ 
++def test_response_nll_mean_is_sum_over_span_length():
++    """Default reduction is "mean" (the reference computes this as HF's causal-LM loss, which is
++    mean-reduced) and the span is n_resp + 1 tokens."""
++    torch.manual_seed(4)
++    vocab, seq_len, n_resp = 10, 6, 3
++    logits = torch.randn(1, seq_len, vocab)
++    input_ids = torch.randint(0, vocab, (1, seq_len))
++
++    got_sum = response_nll(logits, input_ids, n_resp, reduction="sum")
++    got_mean = response_nll(logits, input_ids, n_resp)
++    assert torch.allclose(got_mean, got_sum / (n_resp + 1), atol=1e-5)
++
++
+ def test_response_nll_lower_for_confident_correct_predictions():
+     """A degenerate logit distribution that puts all mass on the actual target token at every
+     response position should give a near-zero NLL; a uniform distribution should give a much
+@@ -166,14 +188,14 @@ def test_response_nll_lower_for_confident_correct_predictions():
+     input_ids = torch.tensor([[3, 7, 1, 9, 15]])
+ 
+     confident_logits = torch.full((1, seq_len, vocab), -10.0)
+-    for t in range(seq_len - n_resp, seq_len):
++    for t in range(seq_len - n_resp - 1, seq_len):
+         confident_logits[0, t - 1, input_ids[0, t]] = 10.0
+     uniform_logits = torch.zeros(1, seq_len, vocab)
+ 
+     confident_nll = response_nll(confident_logits, input_ids, n_resp, reduction="sum")
+     uniform_nll = response_nll(uniform_logits, input_ids, n_resp, reduction="sum")
+     assert confident_nll.item() < 1e-3
+-    assert uniform_nll.item() > n_resp * (torch.log(torch.tensor(float(vocab))).item() - 0.01)
++    assert uniform_nll.item() > (n_resp + 1) * (torch.log(torch.tensor(float(vocab))).item() - 0.01)
+ 
+ 
+ def test_response_nll_rejects_n_resp_larger_than_available_context():

@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 
 from evals.bootstrap_analysis import bootstrap_ci
 from evals.summarize import collect_raw_values_by_cond_field
+from adapters.registry import TASK_CHOICES
 
 
 def _save(fig, out_path: Path) -> Path:
@@ -273,7 +274,7 @@ if __name__ == "__main__":
     sub = parser.add_subparsers(dest="mode", required=True)
 
     judged = sub.add_parser("judged", help="score comparison + compression/quality frontier from judged_{split}.jsonl")
-    judged.add_argument("--task", required=True, choices=["caveman", "ifeval"])
+    judged.add_argument("--task", required=True, choices=TASK_CHOICES)
     judged.add_argument("--split", default="test")
 
     sweep = sub.add_parser("sweep", help="layer-sweep (+ PR-vs-metric, if present) plots from a sweep JSONL")
@@ -283,7 +284,7 @@ if __name__ == "__main__":
     sweep.add_argument("--group-by", default=None, help='e.g. "alpha" or "nll_weight"')
 
     everything = sub.add_parser("everything", help="maximum coverage: judged plots + every discovered *_sweep.jsonl, every metric, every hyperparameter grouping")
-    everything.add_argument("--task", required=True, choices=["caveman", "ifeval"])
+    everything.add_argument("--task", required=True, choices=TASK_CHOICES)
     everything.add_argument("--split", default="test")
 
     args = parser.parse_args()

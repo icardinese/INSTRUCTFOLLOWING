@@ -31,6 +31,7 @@ from evals.registry import get_eval_adapter
 from steering.batch_routing import generate_batched_uniform
 from steering.psr.gate import GateState
 from steering.psr.multi_gate import make_multi_inference_hooks
+from adapters.registry import TASK_CHOICES
 
 DEFAULT_N = 180
 MAX_BATCH_ROWS = 60  # same budget evals/layer_hparam_search.py uses -- an unbounded batch hit a
@@ -164,7 +165,7 @@ def run(task: str, n: int, device: str = "cuda") -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", default="caveman", choices=["caveman", "ifeval"])
+    parser.add_argument("--task", default="caveman", choices=TASK_CHOICES)
     parser.add_argument("--n", type=int, default=DEFAULT_N)
     args = parser.parse_args()
     run(args.task, args.n)

@@ -15,6 +15,7 @@ from adapters.registry import get_adapter
 from core.reproducibility import set_seed
 from evals.registry import get_eval_adapter
 from evals.summarize import collect_raw_values_by_cond_field
+from adapters.registry import TASK_CHOICES
 
 N_BOOTSTRAP = 2000
 CI_LOW, CI_HIGH = 2.5, 97.5
@@ -87,7 +88,7 @@ def main(task: str, split: str, compare: str | None, seed: int = 42) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, choices=["caveman", "ifeval"])
+    parser.add_argument("--task", required=True, choices=TASK_CHOICES)
     parser.add_argument("--split", default="test")
     parser.add_argument("--compare", default=None, help="e.g. 'prompt_psr_proper,prompt_psr_conceptor'")
     parser.add_argument("--seed", type=int, default=42)
