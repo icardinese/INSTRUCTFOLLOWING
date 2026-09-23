@@ -1,0 +1,15 @@
+################################################################
+# Overnight TRIAGE run starting at Wed Sep 23 07:21:16 AM UTC 2026
+# Log: results/triage/overnight_20260923_072116.log
+# max_batch_rows=11 (default 11 for triage, NOT the library default of 60 --
+#   60 would sit at 1.02x the OOM measured on an 80GB A100; see the comment in this script)
+################################################################
+
+== pre-flight checks ==
+gold labels: found for train/dev/test
+  train: n=180 dist={'no': 117, 'notify': 19, 'email': 44} majority-baseline=65.0%
+  dev: n=60 dist={'no': 37, 'email': 15, 'notify': 8} majority-baseline=61.7%
+  test: n=180 dist={'no': 116, 'notify': 28, 'email': 36} majority-baseline=64.4%
+CUDA: available
+core dependencies: importable
+-- smoke test: one triage training point (catches OOM at QR's ~2.4k-token span) --

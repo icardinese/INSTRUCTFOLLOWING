@@ -1,0 +1,145 @@
+################################################################
+# Overnight TRIAGE run starting at Wed Sep 23 07:26:37 AM UTC 2026
+# Log: results/triage/overnight_20260923_072637.log
+# max_batch_rows=11 (default 11 for triage, NOT the library default of 60 --
+#   60 would sit at 1.02x the OOM measured on an 80GB A100; see the comment in this script)
+################################################################
+
+== pre-flight checks ==
+gold labels: found for train/dev/test
+  train: n=180 dist={'no': 117, 'notify': 19, 'email': 44} majority-baseline=65.0%
+  dev: n=60 dist={'no': 37, 'email': 15, 'notify': 8} majority-baseline=61.7%
+  test: n=180 dist={'no': 116, 'notify': 28, 'email': 36} majority-baseline=64.4%
+CUDA: available
+core dependencies: importable
+-- smoke test: one triage training point (catches OOM at QR's ~2.4k-token span) --
+smoke test: PASSED (one point trained end to end)
+pre-flight checks passed -- proceeding.
+
+== [2026-09-23 07:55:39] START: S-PSR / PSR-Proper sweep (layer x loss-config) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:24,  3.99it/s]Loading weights:   1%|          | 2/339 [00:00<01:34,  3.57it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.70it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 35.35it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 52.41it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 64.33it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 73.07it/s]Loading weights:  19%|█▉        | 64/339 [00:01<00:03, 74.97it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 86.15it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 89.12it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 91.30it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.39it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 93.65it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 94.52it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 95.28it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 95.78it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 96.04it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 96.21it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.77it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.86it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.12it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.30it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.49it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.78it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.62it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.99it/s]Loading weights:  86%|████████▋ | 293/339 [00:03<00:00, 94.68it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 97.44it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 97.26it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 97.14it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.61it/s]
+>>> resuming sweep: 26 grid point(s) already in results/triage/psr_proper_sweep.jsonl
+
+wrote 26 sweep rows to results/triage/psr_proper_sweep.jsonl
+Best point (26, 1.0, 0.0) was completed in an earlier session -- retraining it once more.
+wrote results/triage/psr_proper_probe.pt (best layer=26, mse_weight=1.0, nll_weight=0.0, final_mse=5.6267)
+== [2026-09-23 08:06:10] OK: S-PSR / PSR-Proper sweep (layer x loss-config) ==
+
+== [2026-09-23 08:06:10] START: SG single-gate sweep (layer x loss-config) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:05,  1.83it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.54it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 33.62it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:06, 50.15it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 62.25it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:04, 71.21it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 77.91it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 83.28it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 87.35it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 89.80it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 91.30it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 92.73it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 93.93it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 95.03it/s]Loading weights:  47%|████▋     | 160/339 [00:02<00:01, 90.90it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 97.19it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 97.10it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 96.35it/s]Loading weights:  62%|██████▏   | 209/339 [00:02<00:01, 94.01it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.94it/s]Loading weights:  68%|██████▊   | 232/339 [00:03<00:01, 92.19it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 97.58it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 97.39it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 97.17it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 97.42it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 97.13it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 97.09it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.82it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.93it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.55it/s]
+>>> resuming sweep: 22 grid point(s) already in results/triage/psr_sg_sweep.jsonl
+
+wrote 22 sweep rows to results/triage/psr_sg_sweep.jsonl
+Best point (22, 1.0, 0.0) was completed in an earlier session -- retraining it once more.
+wrote results/triage/psr_sg_probe.pt (layer=22, mse_weight=1.0, nll_weight=0.0, final_mse=15.2326)
+NOTE: this checkpoint is the lowest-final_mse point, which is NOT the same thing as the best generation quality -- run evals/layer_hparam_search.py --variant single_gate for the judged layer selection.
+== [2026-09-23 08:17:07] OK: SG single-gate sweep (layer x loss-config) ==
+
+== [2026-09-23 08:17:07] START: SG+Clamp gated-clamp sweep (layer x loss-config) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:31,  3.69it/s]Loading weights:   1%|          | 2/339 [00:00<01:37,  3.47it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:29, 11.47it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 34.87it/s]Loading weights:   9%|▊         | 29/339 [00:00<00:06, 49.47it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 64.27it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 72.79it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 79.13it/s]Loading weights:  23%|██▎       | 77/339 [00:01<00:03, 82.09it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 88.23it/s]Loading weights:  30%|██▉       | 101/339 [00:01<00:02, 88.19it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.71it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 93.63it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 93.69it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:02, 93.89it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 94.39it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.12it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 95.34it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.01it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.24it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 95.08it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 95.04it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 95.15it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 95.62it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.09it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.41it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.77it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 96.69it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.51it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.77it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 82.73it/s]
+mg_clamp: 4 layer(s), 2 loss configs
+mg_clamp mse_w=1.0 nll_w=0.0 final_mse=17.7192 final_nll=1.1594
+mg_clamp mse_w=0.0 nll_w=1.0 final_mse=20.8930 final_nll=1.1211
+
+wrote 2 rows to results/triage/mg_clamp_sweep.jsonl
+checkpoints saved per loss config -- compare by JUDGED eval, not final_mse across objectives
+== [2026-09-23 08:35:25] OK: SG+Clamp gated-clamp sweep (layer x loss-config) ==
+
+== [2026-09-23 08:35:25] START: MG all-layer sweep (direction_source=trained) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:23,  4.04it/s]Loading weights:   1%|          | 2/339 [00:00<01:33,  3.60it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.75it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 35.92it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 53.03it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 64.89it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 73.68it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 80.21it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 84.56it/s]Loading weights:  26%|██▋       | 89/339 [00:01<00:02, 85.50it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 91.12it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.26it/s]Loading weights:  37%|███▋      | 125/339 [00:01<00:02, 91.43it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 95.20it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 95.47it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 96.07it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 96.46it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 96.57it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 96.41it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 96.40it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.44it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.55it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.57it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.64it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.68it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.95it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 97.03it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 96.71it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.51it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 95.86it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.74it/s]
+psr_all_layer sweep: 2 loss configs x 4 layers (all layers, no layer sweep -- A-PSR has no layer hyperparameter)
+psr_all_layer mse_weight=1.0 nll_weight=0.0 final_mse=9.7089 final_nll=0.9355 -> psr_all_layer_probe_mse.pt
+psr_all_layer mse_weight=0.0 nll_weight=1.0 final_mse=58.3247 final_nll=0.7066 -> psr_all_layer_probe_nll.pt
+
+wrote 2 sweep rows to results/triage/psr_all_layer_sweep.jsonl
+checkpoints saved per loss config -- compare them by JUDGED evaluation (scripts/eval_all_layer_variants.py), not by final_mse across different objectives
+== [2026-09-23 08:53:22] OK: MG all-layer sweep (direction_source=trained) ==
+
+== [2026-09-23 08:53:22] START: MG all-layer sweep (direction_source=diff_in_means) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:24,  3.99it/s]Loading weights:   1%|          | 2/339 [00:00<01:34,  3.58it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.73it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 35.74it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 53.01it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 64.84it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 72.99it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 79.05it/s]Loading weights:  23%|██▎       | 77/339 [00:01<00:03, 81.75it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 87.93it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 90.30it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 91.71it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 92.86it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 93.81it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:02, 94.27it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 94.45it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 94.96it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 95.31it/s]Loading weights:  58%|█████▊    | 197/339 [00:02<00:01, 92.92it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 96.35it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.07it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.09it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 95.89it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.36it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.34it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.69it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.94it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 97.04it/s]Loading weights:  94%|█████████▎| 317/339 [00:03<00:00, 94.74it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 98.02it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.39it/s]
+psr_multi_gate sweep: 2 loss configs x 4 layers (all layers, no layer sweep -- A-PSR has no layer hyperparameter)
+psr_multi_gate mse_weight=1.0 nll_weight=0.0 final_mse=17.6039 final_nll=1.1568 -> psr_multi_gate_probe_mse.pt
+psr_multi_gate mse_weight=0.0 nll_weight=1.0 final_mse=20.7300 final_nll=1.0974 -> psr_multi_gate_probe_nll.pt
+
+wrote 2 sweep rows to results/triage/psr_multi_gate_sweep.jsonl
+checkpoints saved per loss config -- compare them by JUDGED evaluation (scripts/eval_all_layer_variants.py), not by final_mse across different objectives
+== [2026-09-23 09:11:17] OK: MG all-layer sweep (direction_source=diff_in_means) ==
+
+== [2026-09-23 09:11:17] START: MG all-layer sweep (direction_source=conceptor) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:28,  3.80it/s]Loading weights:   1%|          | 2/339 [00:00<01:36,  3.48it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.49it/s]Loading weights:   5%|▌         | 17/339 [00:00<00:09, 32.93it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 52.83it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 64.80it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 73.57it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 80.02it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 84.99it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 87.50it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 89.64it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 90.68it/s]Loading weights:  37%|███▋      | 125/339 [00:01<00:02, 89.55it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 94.16it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 94.96it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 95.55it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.61it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 95.61it/s]Loading weights:  58%|█████▊    | 197/339 [00:02<00:01, 92.91it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.96it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.00it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.00it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.10it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.44it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.87it/s]Loading weights:  83%|████████▎ | 280/339 [00:03<00:00, 92.33it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 98.57it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 97.38it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.81it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.79it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.02it/s]
+psr_multi_gate_conceptor sweep: 2 loss configs x 4 layers (all layers, no layer sweep -- A-PSR has no layer hyperparameter)
+psr_multi_gate_conceptor mse_weight=1.0 nll_weight=0.0 final_mse=17.4973 final_nll=1.1571 -> psr_multi_gate_conceptor_probe_mse.pt
+psr_multi_gate_conceptor mse_weight=0.0 nll_weight=1.0 final_mse=20.4932 final_nll=1.0975 -> psr_multi_gate_conceptor_probe_nll.pt
+
+wrote 2 sweep rows to results/triage/psr_multi_gate_conceptor_sweep.jsonl
+checkpoints saved per loss config -- compare them by JUDGED evaluation (scripts/eval_all_layer_variants.py), not by final_mse across different objectives
+== [2026-09-23 09:30:19] OK: MG all-layer sweep (direction_source=conceptor) ==
+
+== [2026-09-23 09:30:19] START: Conceptor fixed-vector sweep (layer x alpha x loss-config) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:05,  1.82it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.53it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 33.85it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:06, 50.56it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 62.58it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 71.73it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 78.54it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 83.67it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 87.26it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 89.66it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 91.24it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 92.89it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 94.20it/s]Loading weights:  44%|████▍     | 149/339 [00:02<00:02, 92.80it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 96.58it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 96.74it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 96.56it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 96.40it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 96.56it/s]Loading weights:  65%|██████▌   | 221/339 [00:02<00:01, 94.37it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 97.85it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 97.71it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 97.61it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.80it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 97.14it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.54it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 96.88it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.86it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.89it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.86it/s]
+layer=10 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=18.4937 final_nll=1.1551
+layer=10 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=19.1535 final_nll=1.1346
+layer=10 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=18.5090 final_nll=1.1558
+layer=10 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=19.2065 final_nll=1.1341
+layer=10 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=18.5157 final_nll=1.1559
+layer=10 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=19.2516 final_nll=1.1341
+layer=10 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=18.5182 final_nll=1.1569
+layer=10 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=19.2688 final_nll=1.1337
+layer=10 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=18.5234 final_nll=1.1571
+layer=10 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=19.2799 final_nll=1.1339
+layer=14 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=17.7147 final_nll=1.1581
+layer=14 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=18.8575 final_nll=1.1262
+layer=14 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=17.7759 final_nll=1.1593
+layer=14 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=18.8480 final_nll=1.1279
+layer=14 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=17.8710 final_nll=1.1595
+layer=14 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=18.8014 final_nll=1.1304
+layer=14 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=17.9474 final_nll=1.1579
+layer=14 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=18.8121 final_nll=1.1324
+layer=14 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=17.9834 final_nll=1.1585
+layer=14 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=18.8286 final_nll=1.1330
+layer=18 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=16.9608 final_nll=1.1613
+layer=18 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=17.6302 final_nll=1.1424
+layer=18 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=17.0360 final_nll=1.1656
+layer=18 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=17.7088 final_nll=1.1437
+layer=18 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=17.1097 final_nll=1.1675
+layer=18 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=17.7518 final_nll=1.1437
+layer=18 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=17.1632 final_nll=1.1670
+layer=18 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=17.7898 final_nll=1.1448
+layer=18 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=17.1909 final_nll=1.1662
+layer=18 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=17.8267 final_nll=1.1450
+layer=22 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=15.1231 final_nll=1.1512
+layer=22 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=16.5263 final_nll=1.1312
+layer=22 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=15.1798 final_nll=1.1509
+layer=22 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=16.5983 final_nll=1.1320
+layer=22 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=15.2127 final_nll=1.1519
+layer=22 alpha=4.0 mse_weight=0.0 nll_weight=1.0 final_mse=16.6674 final_nll=1.1336
+layer=22 alpha=8.0 mse_weight=1.0 nll_weight=0.0 final_mse=15.2270 final_nll=1.1523
+layer=22 alpha=8.0 mse_weight=0.0 nll_weight=1.0 final_mse=16.6998 final_nll=1.1333
+layer=22 alpha=16.0 mse_weight=1.0 nll_weight=0.0 final_mse=15.2309 final_nll=1.1516
+layer=22 alpha=16.0 mse_weight=0.0 nll_weight=1.0 final_mse=16.7052 final_nll=1.1330
+
+wrote 40 sweep rows to results/triage/psr_conceptor_sweep.jsonl
+wrote results/triage/psr_conceptor_probe.pt (best layer=22, alpha=1.0, mse_weight=1.0, nll_weight=0.0, final_mse=15.1231)
+== [2026-09-23 15:05:02] OK: Conceptor fixed-vector sweep (layer x alpha x loss-config) ==
+
+== [2026-09-23 15:05:02] START: Conceptor/matrix sweep (layer x alpha x loss-config) ==
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:27,  1.63it/s]Loading weights:   5%|▌         | 17/339 [00:00<00:10, 29.79it/s]Loading weights:   9%|▊         | 29/339 [00:00<00:06, 45.55it/s]Loading weights:  12%|█▏        | 41/339 [00:01<00:05, 58.05it/s]Loading weights:  16%|█▌        | 53/339 [00:01<00:04, 67.70it/s]Loading weights:  19%|█▉        | 64/339 [00:01<00:03, 73.21it/s]Loading weights:  23%|██▎       | 77/339 [00:01<00:03, 81.95it/s]Loading weights:  26%|██▋       | 89/339 [00:01<00:02, 86.16it/s]Loading weights:  29%|██▉       | 100/339 [00:01<00:02, 86.79it/s]Loading weights:  33%|███▎      | 112/339 [00:01<00:02, 89.34it/s]Loading weights:  37%|███▋      | 124/339 [00:01<00:02, 91.08it/s]Loading weights:  40%|████      | 137/339 [00:02<00:02, 87.61it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:02, 92.29it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 93.54it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 94.47it/s]Loading weights:  55%|█████▍    | 185/339 [00:02<00:01, 92.38it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.90it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 96.07it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.14it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.08it/s]Loading weights:  72%|███████▏  | 245/339 [00:03<00:01, 93.88it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 97.20it/s]Loading weights:  79%|███████▉  | 269/339 [00:03<00:00, 94.78it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 98.32it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 97.69it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 97.50it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 97.29it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 97.36it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.89it/s]
+layer=10 alpha=1.0 delta_scale=57.15 participation_ratio=1169.400
+layer=10 alpha=1.0 mse_weight=1.0 nll_weight=0.0 final_mse=19.0028 participation_ratio=1169.400
+layer=10 alpha=1.0 delta_scale=57.15 participation_ratio=1169.400
+layer=10 alpha=1.0 mse_weight=0.0 nll_weight=1.0 final_mse=20.1418 participation_ratio=1169.400
+layer=10 alpha=2.0 delta_scale=61.03 participation_ratio=1867.659
+layer=10 alpha=2.0 mse_weight=1.0 nll_weight=0.0 final_mse=18.9919 participation_ratio=1867.659
+layer=10 alpha=2.0 delta_scale=61.03 participation_ratio=1867.659
+layer=10 alpha=2.0 mse_weight=0.0 nll_weight=1.0 final_mse=20.0031 participation_ratio=1867.659
+layer=10 alpha=4.0 delta_scale=63.02 participation_ratio=2633.840
+layer=10 alpha=4.0 mse_weight=1.0 nll_weight=0.0 final_mse=18.9843 participation_ratio=2633.840
+layer=10 alpha=4.0 delta_scale=63.02 participation_ratio=2633.840
