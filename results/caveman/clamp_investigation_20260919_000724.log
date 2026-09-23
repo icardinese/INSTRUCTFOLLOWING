@@ -1,17 +1,0 @@
-################################################################
-# Clamp investigation -- Sat Sep 19 12:07:24 AM UTC 2026
-# Log: results/caveman/clamp_investigation_20260919_000724.log
-################################################################
-openai.key: found
-CUDA: ok
-
-########## STAGE 1: surface 2x2 (no training) ##########
-
-== [00:07:27] Stolfo, response-only surface ==
-results/caveman/stolfo_resp_tiered_search.jsonl already has a Final result for 'stolfo_resp' -- fully done, skipping. Delete results/caveman/stolfo_resp_tiered_search.jsonl (or just its 'final' row) to force a rerun.
-== OK: Stolfo, response-only surface ==
-
-== [00:07:35] Const, response-only surface ==
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:01,  1.86it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.82it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 34.82it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 52.47it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 65.55it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 75.05it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 81.92it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 86.99it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 90.19it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 92.59it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 94.34it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 95.70it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 96.49it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 97.03it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 97.43it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 97.90it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 98.12it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 98.06it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 98.19it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 98.47it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 98.41it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 98.43it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 98.48it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 98.63it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 98.81it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 98.91it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 98.93it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 99.01it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 99.24it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 86.03it/s]
-== Tier 1 (= full grid, no training to prefilter with): 130 candidates, n=20, real judged evaluation ==

@@ -27,6 +27,7 @@ diagnostics -- cheap, and directly useful for the "what does pure-NLL training d
 metric, and vice versa" question a real MSE-vs-LL ablation needs to answer.
 """
 import random
+import time
 
 import torch
 from transformers import get_scheduler
@@ -38,7 +39,50 @@ from steering.psr.reference_config import DATA_SHUFFLE_SEED
 
 
 @torch.no_grad()
-def eval_dev_metrics(model, tokenizer, forward_fn, layer_idx: int, n_layers: int, dev_items: list[dict], dev_responses: dict) -> dict:
+def build_target_cache(model, tokenizer, items: list[dict], responses: dict,
+                       layer_idx: int, n_layers: int) -> list:
+    """Precompute, ONCE per item, everything a training/eval step needs that does not depend on
+    the trainable parameters: the tokenized pair and the target hidden states.
+
+    WHY. The target is the frozen model's hidden states on the INSTRUCTED sequence. The model is
+    frozen (requires_grad False) and in eval() mode, and the input never changes -- so the target
+    is a constant per item. Previously it was recomputed on every training step of every epoch,
+    and again on every dev eval: 15 epochs x 180 items plus 16 evals x 60 items of full forward
+    passes over the ~1.4k-token instructed prompt, including a 152k-vocab LM head whose output was
+    discarded. Measured against the triage config that is ~67% of all compute per grid point.
+    Caching it is the single largest speedup available and changes no numbers: the cached value
+    is produced by the identical call (collect_target_hidden_states) on the identical input.
+
+    WHAT IS KEPT. Only the slice subsequent_layers_mse actually reads -- layers layer_idx+1 ..
+    n_layers, positions -(n_resp+1): -- stored as (1, n_resp+1, d) so the existing
+    `hidden_target[idx][0, -(n_resp+1):, :]` indexing returns it unchanged. Unused layer indices
+    are None. Each slice is .clone()d: a bare slice is a VIEW that pins the entire (29-layer x
+    full-sequence) storage, which across 240 items would be ~70GB rather than ~6GB.
+
+    ORDER. The returned list is ALIGNED with `items`, with None where build_training_pair returned
+    None. Keeping the None placeholders means shuffling this list with the same RNG yields exactly
+    the same permutation as shuffling `items` did, so the item order each epoch is unchanged.
+    """
+    cache = []
+    with torch.no_grad():
+        for item in items:
+            pair = build_training_pair(model, tokenizer, item, responses)
+            if pair is None:
+                cache.append(None)
+                continue
+            full = collect_target_hidden_states(model, pair["full_instr"])
+            span = pair["n_resp"] + 1
+            target = [None] * (n_layers + 1)
+            for idx in range(layer_idx + 1, n_layers + 1):
+                target[idx] = full[idx][:, -span:, :].clone()
+            del full
+            cache.append((pair, target))
+    return cache
+
+
+@torch.no_grad()
+def eval_dev_metrics(model, tokenizer, forward_fn, layer_idx: int, n_layers: int, dev_items: list[dict],
+                     dev_responses: dict, cache: list | None = None) -> dict:
     """Returns {"mse": ..., "nll": ..., "nll_sum": ...}, each the mean over dev items.
 
     "nll" is now MEAN-reduced (per-token), matching what the training loss optimizes as of
@@ -46,12 +90,16 @@ def eval_dev_metrics(model, tokenizer, forward_fn, layer_idx: int, n_layers: int
     paper's sum notation. "nll_sum" preserves the old sum-reduced number so rows logged in
     psr_proper_sweep.jsonl before that change remain comparable; it is a diagnostic only and is
     never optimized."""
+    # @torch.no_grad(): this function never calls backward(). Without it, the gate parameters'
+    # requires_grad made every dev forward build a full autograd graph and keep every activation
+    # alive -- memory and time spent on a graph that was then thrown away.
+    if cache is None:
+        cache = build_target_cache(model, tokenizer, dev_items, dev_responses, layer_idx, n_layers)
     mse_losses, nll_losses, nll_sum_losses = [], [], []
-    for item in dev_items:
-        pair = build_training_pair(model, tokenizer, item, dev_responses)
-        if pair is None:
+    for entry in cache:
+        if entry is None:
             continue
-        target = collect_target_hidden_states(model, pair["full_instr"])
+        pair, target = entry
         pred, logits, _ = forward_fn(pair)
         mse_losses.append(subsequent_layers_mse(pred, target, layer_idx, pair["n_resp"], n_layers).item())
         nll_losses.append(response_nll(logits, pair["full_base"], pair["n_resp"], reduction="mean").item())
@@ -93,7 +141,17 @@ def train_gate(
 
     LR follows a linear decay to zero with no warmup over the full run, matching the reference's
     get_scheduler("linear", num_warmup_steps=0, num_training_steps=total_steps)."""
-    baseline_metrics = eval_dev_metrics(model, tokenizer, forward_fn, layer_idx, n_layers, dev_items, dev_responses)
+    # Targets are constant per item (frozen model, eval mode, fixed input), so compute them ONCE
+    # here instead of on every step of every epoch. See build_target_cache for the full rationale;
+    # this is ~67% of per-grid-point compute on triage and changes no numbers.
+    _t0 = time.time()
+    train_cache = build_target_cache(model, tokenizer, train_items, train_responses, layer_idx, n_layers)
+    dev_cache = build_target_cache(model, tokenizer, dev_items, dev_responses, layer_idx, n_layers)
+    print(f"  target cache: {sum(e is not None for e in train_cache)} train + "
+          f"{sum(e is not None for e in dev_cache)} dev items in {time.time() - _t0:.1f}s", flush=True)
+
+    baseline_metrics = eval_dev_metrics(model, tokenizer, forward_fn, layer_idx, n_layers, dev_items,
+                                        dev_responses, cache=dev_cache)
 
     # Normalizer is fixed once, BEFORE training, from the same dev-set MSE the reference uses as
     # its average_psi_before_training. Recomputing it per epoch would make the loss a moving
@@ -110,13 +168,15 @@ def train_gate(
     rng = random.Random(data_shuffle_seed)
 
     for epoch in range(n_epochs):
-        epoch_items = list(train_items)
-        rng.shuffle(epoch_items)
-        for item in epoch_items:
-            pair = build_training_pair(model, tokenizer, item, train_responses)
+        # Shuffling the item-ALIGNED cache (None placeholders kept) consumes the RNG identically
+        # to shuffling train_items, so each epoch visits items in exactly the same order as before.
+        epoch_entries = list(train_cache)
+        rng.shuffle(epoch_entries)
+        for entry in epoch_entries:
+            pair = None if entry is None else entry[0]
             if pair is None:
                 continue
-            target = collect_target_hidden_states(model, pair["full_instr"])
+            target = entry[1]
             pred, logits, fit = forward_fn(pair)
             loss = (
                 mse_weight * (subsequent_layers_mse(pred, target, layer_idx, pair["n_resp"], n_layers) / psi_norm)
@@ -129,9 +189,9 @@ def train_gate(
             if lr_scheduler is not None:
                 lr_scheduler.step()
 
-        dev_metrics = eval_dev_metrics(model, tokenizer, forward_fn, layer_idx, n_layers, dev_items, dev_responses)
+        dev_metrics = eval_dev_metrics(model, tokenizer, forward_fn, layer_idx, n_layers, dev_items, dev_responses, cache=dev_cache)
         if on_epoch_end:
             on_epoch_end(epoch, dev_metrics)
 
-    final_metrics = eval_dev_metrics(model, tokenizer, forward_fn, layer_idx, n_layers, dev_items, dev_responses)
+    final_metrics = eval_dev_metrics(model, tokenizer, forward_fn, layer_idx, n_layers, dev_items, dev_responses, cache=dev_cache)
     return baseline_metrics, final_metrics

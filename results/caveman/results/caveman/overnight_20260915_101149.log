@@ -1,15 +1,0 @@
-################################################################
-# Overnight caveman run starting at Tue Sep 15 10:11:49 AM UTC 2026
-# Log: results/caveman/overnight_20260915_101149.log
-################################################################
-
-== pre-flight checks ==
-openai.key: found
-CUDA: available
-core dependencies: importable
-pre-flight checks passed -- proceeding.
-
-== [2026-09-15 10:11:57] START: S-PSR baseline (layer=14) ==
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]Fetching 4 files: 100%|██████████| 4/4 [01:19<00:00, 19.97s/it]Fetching 4 files: 100%|██████████| 4/4 [01:19<00:00, 19.97s/it]
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<02:57,  1.90it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 12.02it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 35.32it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 52.72it/s]Loading weights:  12%|█▏        | 42/339 [00:00<00:04, 65.64it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 75.05it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 81.13it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 85.67it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 89.49it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 92.42it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 94.40it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 95.60it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 96.56it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 96.65it/s]Loading weights:  47%|████▋     | 160/339 [00:02<00:01, 91.51it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 98.48it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 98.53it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 97.38it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 96.97it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 97.35it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 97.57it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 98.07it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 98.53it/s]Loading weights:  79%|███████▉  | 268/339 [00:03<00:00, 93.87it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 100.35it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 99.57it/s] Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 98.75it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 98.68it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 98.28it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 85.70it/s]

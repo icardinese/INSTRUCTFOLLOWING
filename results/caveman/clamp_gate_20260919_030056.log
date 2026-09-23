@@ -1,69 +1,0 @@
-################################################################
-# Gated clamp (SG+Clamp, MG+Clamp) -- Sat Sep 19 03:00:56 AM UTC 2026
-# No API calls in this script. Log: results/caveman/clamp_gate_20260919_030056.log
-################################################################
-CUDA: ok
-cache: teacher_responses_train.json
-cache: teacher_responses_dev.json
-
-SG+Clamp layer: 16 (ungated clamp's tiered-search winner)
-
-== [03:00:58] SG+Clamp sweep (layer 16, 2 loss configs) ==
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:23,  4.06it/s]Loading weights:   1%|          | 2/339 [00:00<01:37,  3.45it/s]Loading weights:   5%|▍         | 16/339 [00:00<00:09, 32.57it/s]Loading weights:   8%|▊         | 28/339 [00:00<00:06, 50.51it/s]Loading weights:  12%|█▏        | 39/339 [00:00<00:04, 61.70it/s]Loading weights:  15%|█▌        | 52/339 [00:01<00:03, 74.53it/s]Loading weights:  19%|█▉        | 64/339 [00:01<00:03, 75.18it/s]Loading weights:  23%|██▎       | 77/339 [00:01<00:03, 84.07it/s]Loading weights:  26%|██▌       | 88/339 [00:01<00:02, 85.85it/s]Loading weights:  30%|██▉       | 101/339 [00:01<00:02, 92.08it/s]Loading weights:  33%|███▎      | 112/339 [00:01<00:02, 91.88it/s]Loading weights:  37%|███▋      | 124/339 [00:01<00:02, 94.01it/s]Loading weights:  40%|████      | 137/339 [00:01<00:02, 98.05it/s]Loading weights:  44%|████▍     | 149/339 [00:02<00:01, 97.54it/s]Loading weights:  47%|████▋     | 161/339 [00:02<00:01, 97.71it/s]Loading weights:  51%|█████     | 173/339 [00:02<00:01, 97.67it/s]Loading weights:  55%|█████▍    | 185/339 [00:02<00:01, 98.01it/s]Loading weights:  58%|█████▊    | 197/339 [00:02<00:01, 98.29it/s]Loading weights:  62%|██████▏   | 209/339 [00:02<00:01, 98.38it/s]Loading weights:  65%|██████▌   | 221/339 [00:02<00:01, 97.65it/s]Loading weights:  68%|██████▊   | 231/339 [00:02<00:01, 93.24it/s]Loading weights:  72%|███████▏  | 244/339 [00:03<00:00, 96.90it/s]Loading weights:  76%|███████▌  | 256/339 [00:03<00:00, 97.29it/s]Loading weights:  79%|███████▉  | 269/339 [00:03<00:00, 100.04it/s]Loading weights:  83%|████████▎ | 280/339 [00:03<00:00, 96.99it/s] Loading weights:  86%|████████▋ | 293/339 [00:03<00:00, 99.00it/s]Loading weights:  90%|████████▉ | 305/339 [00:03<00:00, 98.38it/s]Loading weights:  93%|█████████▎| 316/339 [00:03<00:00, 96.21it/s]Loading weights:  97%|█████████▋| 329/339 [00:03<00:00, 99.68it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 85.88it/s]
-sg_clamp: 1 layer(s), 2 loss configs
-sg_clamp mse_w=1.0 nll_w=0.0 final_mse=23.5908 final_nll=50.3789
-sg_clamp mse_w=0.0 nll_w=1.0 final_mse=19.6788 final_nll=46.2278
-
-wrote 2 rows to results/caveman/sg_clamp_sweep.jsonl
-checkpoints saved per loss config -- compare by JUDGED eval, not final_mse across objectives
-== OK: SG+Clamp sweep (layer 16, 2 loss configs) ==
-
-== [03:03:41] MG+Clamp sweep (all layers, 2 loss configs) ==
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:11,  1.76it/s]Loading weights:   5%|▍         | 16/339 [00:00<00:11, 28.38it/s]Loading weights:   9%|▊         | 29/339 [00:00<00:07, 44.11it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:05, 59.32it/s]Loading weights:  15%|█▌        | 52/339 [00:01<00:04, 65.09it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 78.52it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 84.17it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 88.23it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 91.14it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 93.44it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 94.84it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 95.61it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 96.20it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 96.85it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 97.54it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 97.98it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 97.78it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 98.12it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 97.97it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 98.02it/s]Loading weights:  72%|███████▏  | 245/339 [00:03<00:00, 95.54it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 98.83it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 97.86it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 98.47it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 98.58it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 98.77it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 98.69it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 98.70it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 85.92it/s]
-mg_clamp: 28 layer(s), 2 loss configs
-mg_clamp mse_w=1.0 nll_w=0.0 final_mse=nan final_nll=nan
-mg_clamp mse_w=0.0 nll_w=1.0 final_mse=nan final_nll=nan
-
-wrote 2 rows to results/caveman/mg_clamp_sweep.jsonl
-checkpoints saved per loss config -- compare by JUDGED eval, not final_mse across objectives
-== OK: MG+Clamp sweep (all layers, 2 loss configs) ==
-
-== [03:07:39] generate + avg_tokens (no judging) ==
-found 4/4 checkpoints: sg_clamp_probe_mse, sg_clamp_probe_nll, mg_clamp_probe_mse, mg_clamp_probe_nll
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:21,  4.14it/s]Loading weights:   1%|          | 2/339 [00:00<01:30,  3.74it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 12.21it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 36.89it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 54.71it/s]Loading weights:  12%|█▏        | 41/339 [00:01<00:04, 64.64it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 76.33it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 81.98it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 86.56it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 88.31it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 91.10it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.70it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 93.92it/s]Loading weights:  40%|████      | 137/339 [00:02<00:02, 92.52it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 96.59it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 97.33it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 97.93it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 98.11it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 98.47it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 98.67it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 98.49it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 98.52it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 98.57it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 98.71it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 98.77it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 99.12it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 98.37it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 98.72it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 99.01it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 99.17it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 85.51it/s]
-
-SG+Clamp (MSE): 1 layer(s) hooked [16]
-  alone      77.4 tok   (judging skipped)
-  prompt     34.2 tok   (judging skipped)
-
-SG+Clamp (NLL): 1 layer(s) hooked [16]
-  alone      62.5 tok   (judging skipped)
-  prompt     35.8 tok   (judging skipped)
-
-MG+Clamp (MSE): 28 layer(s) hooked (all)
-  alone      20.0 tok   (judging skipped)
-  prompt     20.0 tok   (judging skipped)
-
-MG+Clamp (NLL): 28 layer(s) hooked (all)
-  alone      20.0 tok   (judging skipped)
-  prompt     20.0 tok   (judging skipped)
-
-wrote results/caveman/clamp_gate_eval.json
-
-reference points (response-only surface, steering alone):
-  ungated clamp, ALL positions         59.5 tok
-  ungated clamp, response-only        106.5 tok  <-- beat this
-
-Add correctness later without regenerating:
-  python3 scripts/eval_clamp_gate.py --task caveman --judge-saved
-== OK: generate + avg_tokens (no judging) ==
-
-################################################################
-# DONE Sat Sep 19 03:11:20 AM UTC 2026. No failures.
-# Checkpoints: results/caveman/{sg,mg}_clamp_probe_{mse,nll}.pt
-# Tokens:      results/caveman/clamp_gate_eval.json
-# Judge later: python3 scripts/eval_clamp_gate.py --task caveman --judge-saved
-################################################################

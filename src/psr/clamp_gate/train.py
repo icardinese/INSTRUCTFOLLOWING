@@ -192,6 +192,55 @@ def sweep(task, layers=None, loss_config_grid=None, seed=42, device="cuda"):
     print("checkpoints saved per loss config -- compare by JUDGED eval, not final_mse across objectives")
 
 
+DEFAULT_SG_SWEEP_LAYERS = list(range(2, 27, 2))  # same grid as proper/single_gate/conceptor
+
+
+def sweep_sg_layers(task, sweep_layers=None, loss_config_grid=None, seed=42, device="cuda"):
+    """SG+Clamp LAYER sweep: (layer x loss-config), one single-gated clamp per point.
+
+    WHY THIS EXISTS SEPARATELY FROM sweep(). sweep() trains every loss config over one FIXED layer
+    set -- it has no layer axis, so it can express MG+Clamp (all layers) or SG+Clamp at ONE layer,
+    but not a sweep over layers. Calling sweep() once per layer does not work either: every call
+    writes the same sg_clamp_sweep.jsonl with resume key [mse_weight, nll_weight] and no layer, so
+    the first layer's rows make every later layer look "already done" and they are silently
+    skipped. That is exactly what a 13-call loop over sweep() would have produced.
+
+    This mirrors proper/single_gate: layer is in each row AND in the resume key, so every
+    (layer, loss-config) point is tracked and resumed independently. It writes
+    psr_sg_clamp_sweep.jsonl -- the name evals/layer_hparam_search.py's run_tiered_search resolves
+    for variant "sg_clamp" (psr_{variant}_sweep.jsonl), with the "layer"/"final_mse" fields its
+    best_row_per_layer reads. The old sg_clamp_sweep.jsonl name matched neither.
+
+    Per-layer probes are written as sg_clamp_L{layer}_probe_{mse,nll}.pt so layers do not
+    overwrite one another. The judged search retrains its candidates itself, so these are
+    artifacts for inspection, not inputs to layer selection.
+    """
+    loss_config_grid = loss_config_grid or DEFAULT_LOSS_CONFIG_GRID
+    sweep_layers = sweep_layers or DEFAULT_SG_SWEEP_LAYERS
+    adapter, model, tokenizer, n_layers, train_items, dev_items, tr, dv = _setup(task, device)
+    print(f"sg_clamp layer sweep: {len(sweep_layers)} layers x {len(loss_config_grid)} loss configs")
+
+    def train_fn(point):
+        layer = point["layer"]
+        r = train_one_config(
+            model, tokenizer, [layer], seed, n_layers, model.config.hidden_size, device,
+            train_items, dev_items, tr, dv, adapter.CACHE_DIR,
+            mse_weight=point["mse_weight"], nll_weight=point["nll_weight"])
+        suffix = "_mse" if point["mse_weight"] else "_nll"
+        _save(adapter.RESULTS_DIR / f"sg_clamp_L{layer}_probe{suffix}.pt", r, [layer], task,
+              point["mse_weight"], point["nll_weight"])
+        print(f"sg_clamp layer={layer} mse_w={point['mse_weight']} nll_w={point['nll_weight']} "
+              f"final_mse={r['final_mse']:.4f} final_nll={r['final_nll']:.4f}")
+        return {k: v for k, v in r.items() if k not in ("gates", "directions", "targets")}
+
+    grid = [{"layer": L, **c} for L in sweep_layers for c in loss_config_grid]
+    out = adapter.RESULTS_DIR / "psr_sg_clamp_sweep.jsonl"
+    results, _ = run_grid_sweep(grid, train_fn, out, key_fields=["layer", "mse_weight", "nll_weight"])
+    print(f"\nwrote {len(results)} rows to {out}")
+    print("layer selection is done by evals/layer_hparam_search.py --variant sg_clamp (judged), "
+          "not by final_mse")
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--task", required=True, choices=TASK_CHOICES)
@@ -199,8 +248,15 @@ if __name__ == "__main__":
                      help="comma-separated. One layer = SG+Clamp; omit = MG+Clamp (all layers)")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--sweep", action="store_true")
+    ap.add_argument("--sweep-sg-layers", action="store_true",
+                    help="SG+Clamp layer sweep over range(2,27,2), one single-gated clamp per "
+                         "(layer, loss-config). Writes psr_sg_clamp_sweep.jsonl for the judged "
+                         "search. Use this, not repeated --layers L calls, for SG+Clamp.")
     ap.add_argument("--loss-configs", type=str, default=None)
     a = ap.parse_args()
     layers = [int(x) for x in a.layers.split(",")] if a.layers else None
     cfgs = json.loads(a.loss_configs) if a.loss_configs else None
-    sweep(a.task, layers, cfgs, a.seed)
+    if a.sweep_sg_layers:
+        sweep_sg_layers(a.task, None, cfgs, a.seed)
+    else:
+        sweep(a.task, layers, cfgs, a.seed)

@@ -24,3 +24,10 @@ __pycache__/
 openai.key
 openai.key
 openai.key*
+
+results
+cache
+*.old_local/
+*.pt
+apply_*.py
+consolidate.py

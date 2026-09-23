@@ -8,10 +8,9 @@
 #   all_layer (A-PSR)                ->  all 28 layers (that is what A-PSR IS)
 #   clamp_gate, no --layers          ->  all layers = MG+Clamp
 #
-# There is exactly ONE place a layer flag appears in this file: the SG+Clamp loop, where a single
-# layer is what makes it single-gated. Nowhere else. If you are reading this file looking for the
-# thing that broke A-PSR last time, it was a --layers flag being passed to all_layer and
-# clamp_gate. It is gone.
+# There are NO layer flags in this file. Every variant uses its own built-in grid. The last two
+# layer bugs were both flags: --layers passed to all_layer/clamp_gate (turned A-PSR into a 4-layer
+# MG), and a loop of --layers L calls for SG+Clamp (collapsed to layer 2). Both are gone.
 #
 # Resume: every sweep appends per grid point and skips what is already done. Ctrl-C any time,
 # rerun this script, it picks up where it stopped.
@@ -19,8 +18,26 @@
 # Run it:  bash run_triage.sh
 set -uo pipefail
 
-cd /content/INSTRUCTFOLLOWING || exit 1
-export PYTHONPATH="/content/INSTRUCTFOLLOWING:/content/INSTRUCTFOLLOWING/src:${PYTHONPATH:-}"
+# Run from the repo this script sits in -- NOT a hardcoded path. An earlier version hardcoded
+# /content/INSTRUCTFOLLOWING, which was a second, stale copy of the repo: every fix applied in
+# /root/INSTRUCTFOLLOWING was silently not the code being run.
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$REPO" || exit 1
+export PYTHONPATH="$REPO:$REPO/src:${PYTHONPATH:-}"
+echo "repo: $REPO"
+
+# Refuse to run unpatched code. These are the three fixes whose absence is invisible in the logs
+# until hours later.
+for check in "steering/psr/training_loop.py:build_target_cache:speed fix" \
+             "src/psr/proper/train.py:_existing_probe_matches:retrain-skip fix" \
+             "src/psr/clamp_gate/train.py:sweep_sg_layers:SG+Clamp layer-sweep fix"; do
+    IFS=: read -r f sym name <<< "$check"
+    if ! grep -q "$sym" "$f"; then
+        echo "ABORT: $name is not in $REPO/$f -- this repo is missing patches. Wrong copy?"
+        exit 1
+    fi
+done
+echo "patches: speed fix, retrain-skip, SG+Clamp sweep -- all present"
 
 mkdir -p results/triage
 LOG="results/triage/run_$(date +%Y%m%d_%H%M%S).log"
@@ -56,11 +73,13 @@ step "A-PSR conceptor" \
 step "MG+Clamp" \
     python3 -u src/psr/clamp_gate/train.py --task triage --sweep
 
-# SG+Clamp: one layer per run is what makes it SINGLE-gated. This is the only --layers in the file.
-for L in 2 4 6 8 10 12 14 16 18 20 22 24 26; do
-    step "SG+Clamp layer $L" \
-        python3 -u src/psr/clamp_gate/train.py --task triage --sweep --layers "$L"
-done
+# SG+Clamp layer sweep. NOT a loop of `--sweep --layers L` calls: those all write the same
+# sg_clamp_sweep.jsonl with a resume key that has no layer in it, so every layer after the first
+# looks "already done" and is silently skipped -- 13 steps logging OK while only layer 2 trained.
+# --sweep-sg-layers sweeps (layer x loss-config) with layer in the key, and writes the
+# psr_sg_clamp_sweep.jsonl that the judged search below actually reads.
+step "SG+Clamp layer sweep" \
+    python3 -u src/psr/clamp_gate/train.py --task triage --sweep-sg-layers
 
 # Fixed-vector conceptor ONLY. Its direction is a diff-in-means vector projected once through
 # the conceptor matrix C, giving a rank-1 correction -- this is the SG+Conc / MG+Conc row.

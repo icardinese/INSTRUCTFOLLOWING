@@ -206,6 +206,28 @@ def main(task: str, layer_idx: int | None, seed: int = 42) -> None:
     )
 
 
+
+def _existing_probe_matches(probe_path, best: dict, key_fields: list[str]) -> bool:
+    """True when probe_path is already the checkpoint for `best`, so there is nothing to retrain.
+
+    run_grid_sweep deliberately never calls torch.save -- checkpoint FORMAT differs per method, so
+    materializing the winner is the caller's job. The consequence is that on a RESUMED sweep where
+    every grid point is already on disk, the caller holds JSON rows but no tensors, and previously
+    retrained the winning point purely to have weights to write -- a full training run to
+    reproduce a file already sitting on disk from the session that first trained it.
+
+    Matching on the same key_fields the sweep resumes on keeps the two consistent: if a point is
+    "already done" for resume purposes, its saved checkpoint is the checkpoint for that point.
+    """
+    if not probe_path.exists():
+        return False
+    try:
+        saved = torch.load(probe_path, map_location="cpu", weights_only=False)
+    except Exception:
+        return False  # unreadable/truncated -- retrain rather than trust it
+    return all(saved.get(f) == best.get(f) for f in key_fields)
+
+
 def sweep(
     task: str, layers: list[int] | None = None, alpha_grid: list[float] | None = None,
     loss_config_grid: list[dict] | None = None, seed: int = 42, device: str = "cuda",
@@ -251,8 +273,13 @@ def sweep(
         print("WARNING: sweep produced no usable points -- no probe checkpoint written")
         return
     best_key = (best["layer"], best["alpha"], best["mse_weight"], best["nll_weight"])
+    out_probe_path = adapter.RESULTS_DIR / "psr_conceptor_probe.pt"
     if best_key in checkpoints_by_point:
         winner = checkpoints_by_point[best_key]
+    elif _existing_probe_matches(out_probe_path, best, ["layer", "alpha", "mse_weight", "nll_weight"]):
+        print(f"Best point {best_key} already has a matching checkpoint at {out_probe_path} "
+              f"-- nothing to retrain, leaving it as is.")
+        return
     else:
         # See src/psr/conceptor/matrix/train.py's sweep() for why this retrains rather than bails.
         print(f"Best point {best_key} was completed in an earlier session -- retraining it once more.")
@@ -261,7 +288,6 @@ def sweep(
             train_items, dev_items, train_responses, dev_responses, adapter.CACHE_DIR,
             mse_weight=best["mse_weight"], nll_weight=best["nll_weight"],
         )
-    out_probe_path = adapter.RESULTS_DIR / "psr_conceptor_probe.pt"
     torch.save({
         "weight": winner["weight"], "bias": winner["bias"], "coeff_bias": winner["coeff_bias"],
         "conceptor": winner["conceptor"], "direction": winner["direction"],

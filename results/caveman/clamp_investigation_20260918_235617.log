@@ -1,85 +1,0 @@
-################################################################
-# Clamp investigation -- Fri Sep 18 11:56:17 PM UTC 2026
-# Log: results/caveman/clamp_investigation_20260918_235617.log
-################################################################
-openai.key: found
-CUDA: ok
-
-########## STAGE 1: surface 2x2 (no training) ##########
-
-== [23:56:19] Stolfo, response-only surface ==
-results/caveman/stolfo_resp_tiered_search.jsonl already has a Final result for 'stolfo_resp' -- fully done, skipping. Delete results/caveman/stolfo_resp_tiered_search.jsonl (or just its 'final' row) to force a rerun.
-== OK: Stolfo, response-only surface ==
-
-== [23:56:27] Const, response-only surface ==
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:13,  1.74it/s]Loading weights:   5%|▍         | 16/339 [00:00<00:10, 29.92it/s]Loading weights:   8%|▊         | 27/339 [00:00<00:07, 41.63it/s]Loading weights:  12%|█▏        | 40/339 [00:00<00:05, 57.62it/s]Loading weights:  16%|█▌        | 53/339 [00:01<00:04, 70.09it/s]Loading weights:  19%|█▉        | 65/339 [00:01<00:03, 71.91it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 80.97it/s]Loading weights:  26%|██▋       | 89/339 [00:01<00:03, 82.79it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 89.49it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 92.01it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 94.10it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 95.41it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 95.64it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 96.04it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 96.74it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 97.30it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 97.65it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 97.80it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 97.86it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 98.16it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 97.56it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 97.93it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 97.45it/s]Loading weights:  83%|████████▎ | 280/339 [00:03<00:00, 92.20it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 98.85it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 98.82it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 99.00it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 99.11it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 85.30it/s]
-== Tier 1 (= full grid, no training to prefilter with): 130 candidates, n=20, real judged evaluation ==
-Traceback (most recent call last):
-  File "/root/INSTRUCTFOLLOWING/evals/layer_hparam_search.py", line 855, in <module>
-    run_training_free_search(args.task, args.variant, args.tier1_n, args.final_n, seed=args.seed, max_batch_rows=args.max_batch_rows)
-    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/INSTRUCTFOLLOWING/evals/layer_hparam_search.py", line 762, in run_training_free_search
-    tier1_results = evaluate_candidates(variant, tier1_candidates, ctx, adapter, eval_adapter, tier1_n, split="dev", max_batch_rows=max_batch_rows)
-  File "/root/INSTRUCTFOLLOWING/evals/layer_hparam_search.py", line 471, in evaluate_candidates
-    score_dicts = _score_all_concurrently(eval_adapter, rows, responses)
-  File "/root/INSTRUCTFOLLOWING/evals/layer_hparam_search.py", line 372, in _score_all_concurrently
-    return list(pool.map(lambda pair: eval_adapter.score_response(*pair), zip(rows, responses)))
-  File "/usr/lib/python3.13/concurrent/futures/_base.py", line 625, in result_iterator
-    yield _result_or_cancel(fs.pop())
-          ~~~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "/usr/lib/python3.13/concurrent/futures/_base.py", line 318, in _result_or_cancel
-    return fut.result(timeout)
-           ~~~~~~~~~~^^^^^^^^^
-  File "/usr/lib/python3.13/concurrent/futures/_base.py", line 460, in result
-    return self.__get_result()
-           ~~~~~~~~~~~~~~~~~^^
-  File "/usr/lib/python3.13/concurrent/futures/_base.py", line 402, in __get_result
-    raise self._exception
-  File "/usr/lib/python3.13/concurrent/futures/thread.py", line 59, in run
-    result = self.fn(*self.args, **self.kwargs)
-  File "/root/INSTRUCTFOLLOWING/evals/layer_hparam_search.py", line 372, in <lambda>
-    return list(pool.map(lambda pair: eval_adapter.score_response(*pair), zip(rows, responses)))
-                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
-  File "/root/INSTRUCTFOLLOWING/evals/caveman/judge.py", line 118, in score_response
-    conciseness_score = _call_judge_json(client, CONCISENESS_JUDGE_MODEL, conciseness_prompt)
-  File "/root/INSTRUCTFOLLOWING/evals/caveman/judge.py", line 95, in _call_judge_json
-    resp = client.chat.completions.create(
-        model=model, max_tokens=max_tokens, temperature=0,
-        messages=[{"role": "user", "content": prompt}],
-    )
-  File "/usr/local/lib/python3.13/dist-packages/openai/_utils/_utils.py", line 298, in wrapper
-    return func(*args, **kwargs)
-  File "/usr/local/lib/python3.13/dist-packages/openai/resources/chat/completions/completions.py", line 1296, in create
-    return self._post(
-           ~~~~~~~~~~^
-        "/chat/completions",
-        ^^^^^^^^^^^^^^^^^^^^
-    ...<53 lines>...
-        stream_cls=Stream[ChatCompletionChunk],
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/usr/local/lib/python3.13/dist-packages/openai/_base_client.py", line 1375, in post
-    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
-                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/local/lib/python3.13/dist-packages/openai/_base_client.py", line 1148, in request
-    raise self._make_status_error_from_response(err.response) from None
-openai.RateLimitError: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-4o-mini in organization org-sn5jcIVaDXmlcAW8nnl12VEb on tokens per min (TPM): Limit 200000, Used 200000, Requested 506. Please try again in 151ms. Visit https://platform.openai.com/account/rate-limits to learn more.', 'type': 'tokens', 'param': None, 'code': 'rate_limit_exceeded'}}
-== FAILED: Const, response-only surface ==
-
-########## STAGE 2: missing +Prompt ##########
-
-== [00:04:22] +Prompt for stolfo, const, sg ==
-loading model once for 3 variant(s): stolfo, const, sg
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:21,  4.14it/s]Loading weights:   1%|          | 2/339 [00:00<01:30,  3.74it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 12.17it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 37.22it/s]Loading weights:   9%|▊         | 29/339 [00:00<00:05, 52.76it/s]Loading weights:  12%|█▏        | 42/339 [00:00<00:04, 68.82it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 77.42it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 83.68it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:02, 88.17it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 91.20it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 93.64it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 95.31it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 96.44it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 97.04it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 97.57it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 97.73it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 98.29it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 98.42it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 98.53it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 98.52it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 98.68it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 98.96it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 99.05it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 99.01it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 99.31it/s]Loading weights:  83%|████████▎ | 281/339 [00:03<00:00, 96.79it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 100.15it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 99.95it/s] Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 99.76it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 99.33it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 86.36it/s]
-
-stolfo: layer=16
-  generating Prompt+Steer, n=180 (batched) ...
-  +Prompt: 30.8 tok / 1.767 [1.706, 1.828]  coherent=1.00
-  vs Prompt alone (57.8 tok): -0.1833 [-0.2500, -0.1222] -- WORSE than Prompt
-  wrote results/caveman/nogate_clamp_prompt_plus.json
-
-const: layer=18 coeff=28
-  generating Prompt+Steer, n=180 (batched) ...

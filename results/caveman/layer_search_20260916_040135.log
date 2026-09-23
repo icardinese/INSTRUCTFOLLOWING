@@ -1,34 +1,0 @@
-################################################################
-# Layer/hyperparameter search starting at Wed Sep 16 04:01:35 AM UTC 2026
-# Task=caveman  variants=[proper conceptor conceptor_matrix conceptor_selfproj]  tier1_n=20 tier2_n=20 final_n=180 top_k=3
-# Log: results/caveman/layer_search_20260916_040135.log
-################################################################
-
-== pre-flight checks ==
-openai.key: found
-CUDA: available
-sweep files: found for every requested variant
-pre-flight checks passed -- proceeding.
-
-== [2026-09-16 04:01:40] START: layer/hyperparameter search: proper ==
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]Fetching 4 files:  25%|██▌       | 1/4 [00:17<00:51, 17.14s/it]Fetching 4 files:  50%|█████     | 2/4 [00:46<00:48, 24.14s/it]Fetching 4 files:  75%|███████▌  | 3/4 [00:52<00:16, 16.01s/it]Fetching 4 files: 100%|██████████| 4/4 [02:00<00:00, 36.58s/it]Fetching 4 files: 100%|██████████| 4/4 [02:00<00:00, 30.16s/it]
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:26,  3.90it/s]Loading weights:   1%|          | 2/339 [00:00<01:40,  3.35it/s]Loading weights:   5%|▍         | 16/339 [00:00<00:10, 31.53it/s]Loading weights:   8%|▊         | 28/339 [00:00<00:06, 45.46it/s]Loading weights:  12%|█▏        | 40/339 [00:00<00:05, 58.89it/s]Loading weights:  16%|█▌        | 53/339 [00:01<00:04, 71.36it/s]Loading weights:  19%|█▉        | 65/339 [00:01<00:03, 78.28it/s]Loading weights:  23%|██▎       | 77/339 [00:01<00:03, 76.59it/s]Loading weights:  26%|██▋       | 89/339 [00:01<00:03, 81.42it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 87.66it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 89.91it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 91.33it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 92.59it/s]Loading weights:  44%|████▍     | 149/339 [00:02<00:02, 91.05it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 94.36it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 94.66it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 94.74it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.20it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.54it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 95.85it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.04it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.15it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.17it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.38it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.29it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.35it/s]Loading weights:  90%|████████▉ | 304/339 [00:03<00:00, 91.66it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 97.82it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 97.45it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.62it/s]
-Traceback (most recent call last):
-  File "/root/INSTRUCTFOLLOWING/evals/layer_hparam_search.py", line 352, in <module>
-    run_tiered_search(args.task, args.variant, args.tier1_n, args.tier2_n, args.final_n, args.top_k_layers, args.seed)
-    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/INSTRUCTFOLLOWING/evals/layer_hparam_search.py", line 241, in run_tiered_search
-    train_responses = load_or_compute_responses(model, tokenizer, train_items, adapter.CACHE_DIR / "teacher_responses_train.json", generate_response)
-  File "/root/INSTRUCTFOLLOWING/core/generation_cache.py", line 18, in load_or_compute_responses
-    with cache_path.open("w") as f:
-         ~~~~~~~~~~~~~~~^^^^^
-  File "/usr/lib/python3.13/pathlib/_local.py", line 537, in open
-    return io.open(self, mode, buffering, encoding, errors, newline)
-           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-FileNotFoundError: [Errno 2] No such file or directory: 'cache/caveman/teacher_responses_train.json'
-== [2026-09-16 04:10:33] FAILED (continuing anyway): layer/hyperparameter search: proper ==
-
-== [2026-09-16 04:10:33] START: layer/hyperparameter search: conceptor ==
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:05,  1.82it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.49it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 33.86it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:06, 50.59it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 63.00it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 71.76it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 78.50it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 82.70it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 85.86it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 88.80it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 90.82it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 92.10it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 93.15it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:02, 93.91it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 94.87it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.43it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 96.02it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 96.27it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 96.60it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.43it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.49it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.67it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.75it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.74it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 97.00it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 97.04it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 96.85it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.45it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.54it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.56it/s]

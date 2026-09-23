@@ -1,149 +1,0 @@
-################################################################
-# Layer/hyperparameter search starting at Wed Sep 16 04:12:48 AM UTC 2026
-# Task=caveman  variants=[proper conceptor conceptor_matrix conceptor_selfproj]  tier1_n=20 tier2_n=20 final_n=180 top_k=3
-# Log: results/caveman/layer_search_20260916_041248.log
-################################################################
-
-== pre-flight checks ==
-openai.key: found
-CUDA: available
-sweep files: found for every requested variant
-pre-flight checks passed -- proceeding.
-
-== [2026-09-16 04:12:50] START: layer/hyperparameter search: proper ==
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:25,  3.97it/s]Loading weights:   1%|          | 2/339 [00:00<01:33,  3.59it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.72it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 35.71it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 52.66it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 65.21it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 73.77it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 79.83it/s]Loading weights:  23%|██▎       | 77/339 [00:01<00:03, 80.35it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 86.53it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 89.36it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 91.39it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 92.88it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 94.11it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 94.66it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 95.11it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.77it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 96.18it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 96.17it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 96.37it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 96.57it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 96.74it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.61it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.63it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 96.77it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.93it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.99it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 97.19it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 97.14it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 97.02it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.56it/s]
-== Tier 1: layer sweep, n=20, real judged evaluation decides survivors ==
-13 layers to evaluate (MSE-best hyperparameter combo per layer)
-Tier 1 survivors (top 3 by judged score): [12, 14, 16]
-
-== Tier 2: hyperparameter sweep at surviving layer(s), n=20 ==
-15 (layer, hyperparameter) combos to evaluate at the surviving layer(s)
-Tier 2 winner: layer=12, {'layer': 12, 'mse_weight': 1.0, 'nll_weight': 0.0, 'baseline_mse': 33.990681114196775, 'baseline_nll': 60.50366439819336, 'final_mse': 5.968770785331726, 'final_nll': 35.844250183105466, 'skipped': False, 'judged_score': 2.0, 'ci_lo': 2.0, 'ci_hi': 2.0, 'n': 20}
-
-== Final: full-size confirmation run, n=180, TEST split ==
-Final judged score: 1.9722 [1.9444, 1.9944] (95% CI, n=180)
-
-Wrote full tiered search log to results/caveman/proper_tiered_search.jsonl
-== [2026-09-16 05:13:11] OK: layer/hyperparameter search: proper ==
-
-== [2026-09-16 05:13:11] START: layer/hyperparameter search: conceptor ==
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:22,  4.08it/s]Loading weights:   1%|          | 2/339 [00:00<01:32,  3.65it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 11.92it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 36.31it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 53.23it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 65.11it/s]Loading weights:  16%|█▌        | 53/339 [00:01<00:04, 71.40it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 80.29it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 84.63it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 87.64it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 89.96it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 91.53it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 92.22it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 93.25it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:02, 93.89it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 94.27it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 94.55it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 94.91it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 93.88it/s]Loading weights:  61%|██████▏   | 208/339 [00:02<00:01, 89.60it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 95.70it/s]Loading weights:  69%|██████▊   | 233/339 [00:03<00:01, 93.49it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.66it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 96.75it/s]Loading weights:  79%|███████▉  | 269/339 [00:03<00:00, 93.98it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 96.84it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.60it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 96.70it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 96.63it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 96.43it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 83.23it/s]
-== Tier 1: layer sweep, n=20, real judged evaluation decides survivors ==
-13 layers to evaluate (MSE-best hyperparameter combo per layer)
-Tier 1 survivors (top 3 by judged score): [2, 4, 8]
-
-== Tier 2: hyperparameter sweep at surviving layer(s), n=20 ==
-75 (layer, hyperparameter) combos to evaluate at the surviving layer(s)
-Traceback (most recent call last):
-  File "/root/INSTRUCTFOLLOWING/evals/layer_hparam_search.py", line 352, in <module>
-    run_tiered_search(args.task, args.variant, args.tier1_n, args.tier2_n, args.final_n, args.top_k_layers, args.seed)
-    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/INSTRUCTFOLLOWING/evals/layer_hparam_search.py", line 284, in run_tiered_search
-    tier2_results = evaluate_candidates(variant, tier2_candidates, ctx, adapter, eval_adapter, tier2_n, split="dev")
-  File "/root/INSTRUCTFOLLOWING/evals/layer_hparam_search.py", line 180, in evaluate_candidates
-    responses_by_group = generate_with_routed_configs(
-        ctx.model, ctx.tokenizer, prompts_by_group, hook_fns_by_group, layer_by_group,
-    )
-  File "/root/INSTRUCTFOLLOWING/steering/batch_routing.py", line 120, in generate_with_routed_configs
-    output_ids = model.generate(
-        input_ids=input_ids,
-    ...<4 lines>...
-        eos_token_id=tokenizer.eos_token_id,
-    )
-  File "/usr/local/lib/python3.13/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
-    return func(*args, **kwargs)
-  File "/usr/local/lib/python3.13/dist-packages/transformers/generation/utils.py", line 2668, in generate
-    result = decoding_method(
-        self,
-    ...<5 lines>...
-        **model_kwargs,
-    )
-  File "/usr/local/lib/python3.13/dist-packages/transformers/generation/utils.py", line 2868, in _sample
-    outputs = self._prefill(
-        input_ids,
-    ...<2 lines>...
-        is_first_iteration=not generation_config.is_assistant,
-    )
-  File "/usr/local/lib/python3.13/dist-packages/transformers/generation/utils.py", line 3948, in _prefill
-    return self(**model_inputs, return_dict=True)
-  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "/usr/local/lib/python3.13/dist-packages/transformers/utils/generic.py", line 939, in wrapper
-    output = func(self, *args, **kwargs)
-  File "/usr/local/lib/python3.13/dist-packages/transformers/models/qwen2/modeling_qwen2.py", line 452, in forward
-    outputs: BaseModelOutputWithPast = self.model(
-                                       ~~~~~~~~~~^
-        input_ids=input_ids,
-        ^^^^^^^^^^^^^^^^^^^^
-    ...<5 lines>...
-        **kwargs,
-        ^^^^^^^^^
-    )
-    ^
-  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "/usr/local/lib/python3.13/dist-packages/transformers/utils/generic.py", line 1068, in wrapper
-    output = func(self, *args, **kwargs)
-  File "/usr/local/lib/python3.13/dist-packages/transformers/utils/output_capturing.py", line 262, in wrapper
-    outputs = func(self, *args, **kwargs)
-  File "/usr/local/lib/python3.13/dist-packages/transformers/models/qwen2/modeling_qwen2.py", line 388, in forward
-    hidden_states = decoder_layer(
-        hidden_states,
-    ...<5 lines>...
-        **kwargs,
-    )
-  File "/usr/local/lib/python3.13/dist-packages/transformers/modeling_layers.py", line 114, in __call__
-    return super().__call__(*args, **kwargs)
-           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1885, in _call_impl
-    return inner()
-  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1833, in inner
-    result = forward_call(*args, **kwargs)
-  File "/usr/local/lib/python3.13/dist-packages/transformers/models/qwen2/modeling_qwen2.py", line 296, in forward
-    hidden_states = self.mlp(hidden_states)
-  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
-    return self._call_impl(*args, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "/usr/local/lib/python3.13/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
-    return forward_call(*args, **kwargs)
-  File "/usr/local/lib/python3.13/dist-packages/transformers/models/qwen2/modeling_qwen2.py", line 47, in forward
-    down_proj = self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
-                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~
-torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 13.34 GiB. GPU 0 has a total capacity of 79.25 GiB of which 1.65 GiB is free. Including non-PyTorch memory, this process has 77.59 GiB memory in use. Of the allocated memory 58.47 GiB is allocated by PyTorch, and 18.58 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)
-== [2026-09-16 07:40:02] FAILED (continuing anyway): layer/hyperparameter search: conceptor ==
-
-== [2026-09-16 07:40:02] START: layer/hyperparameter search: conceptor_matrix ==
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<03:03,  1.84it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:28, 11.60it/s]Loading weights:   5%|▌         | 17/339 [00:00<00:10, 31.89it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:06, 50.92it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 63.02it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 72.08it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 78.29it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 82.30it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 85.56it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 88.64it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 90.68it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 91.46it/s]Loading weights:  41%|████      | 138/339 [00:02<00:02, 92.82it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:02, 93.88it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 94.58it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 95.29it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 95.53it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 95.82it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 95.22it/s]Loading weights:  65%|██████▌   | 221/339 [00:02<00:01, 92.66it/s]Loading weights:  69%|██████▉   | 234/339 [00:03<00:01, 95.78it/s]Loading weights:  72%|███████▏  | 245/339 [00:03<00:01, 93.32it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 95.49it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 95.91it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 95.85it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 96.19it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 95.77it/s]Loading weights:  94%|█████████▎| 317/339 [00:03<00:00, 92.19it/s]Loading weights:  97%|█████████▋| 330/339 [00:04<00:00, 95.19it/s]Loading weights: 100%|██████████| 339/339 [00:04<00:00, 82.86it/s]
-== Tier 1: layer sweep, n=20, real judged evaluation decides survivors ==
-13 layers to evaluate (MSE-best hyperparameter combo per layer)
-layer=2 alpha=16.0 delta_scale=26.98 participation_ratio=3179.139
-layer=4 alpha=16.0 delta_scale=37.34 participation_ratio=3499.019
-layer=6 alpha=16.0 delta_scale=46.97 participation_ratio=3552.229
-layer=8 alpha=16.0 delta_scale=60.97 participation_ratio=3572.072
-layer=10 alpha=16.0 delta_scale=63.33 participation_ratio=3560.603
-layer=12 alpha=16.0 delta_scale=66.92 participation_ratio=3566.050
-layer=14 alpha=16.0 delta_scale=73.24 participation_ratio=3568.633
-layer=16 alpha=8.0 delta_scale=83.29 participation_ratio=3530.885
-layer=18 alpha=8.0 delta_scale=99.53 participation_ratio=3559.072
-layer=20 alpha=4.0 delta_scale=137.58 participation_ratio=3527.682
-layer=22 alpha=8.0 delta_scale=200.87 participation_ratio=3582.851
-layer=24 alpha=16.0 delta_scale=270.39 participation_ratio=3583.979
-layer=26 alpha=4.0 delta_scale=354.85 participation_ratio=3582.555
-Tier 1 survivors (top 3 by judged score): [2, 6, 8]
-
-== Tier 2: hyperparameter sweep at surviving layer(s), n=20 ==
-75 (layer, hyperparameter) combos to evaluate at the surviving layer(s)
-layer=2 alpha=1.0 delta_scale=18.47 participation_ratio=810.948
-layer=2 alpha=1.0 delta_scale=18.47 participation_ratio=810.948

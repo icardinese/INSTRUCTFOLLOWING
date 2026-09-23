@@ -1,14 +1,0 @@
-################################################################
-# Overnight caveman run starting at Tue Sep 15 10:09:04 AM UTC 2026
-# Log: results/caveman/overnight_20260915_100904.log
-################################################################
-
-== pre-flight checks ==
-openai.key: found
-CUDA: available
-core dependencies: importable
-pre-flight checks passed -- proceeding.
-
-== [2026-09-15 10:09:16] START: S-PSR baseline (layer=14) ==
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]Fetching 4 files:  25%|██▌       | 1/4 [00:16<00:49, 16.52s/it]Fetching 4 files:  50%|█████     | 2/4 [00:42<00:44, 22.12s/it]Fetching 4 files:  75%|███████▌  | 3/4 [00:46<00:13, 13.75s/it]

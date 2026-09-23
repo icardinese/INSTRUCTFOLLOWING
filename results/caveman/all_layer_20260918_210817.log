@@ -1,274 +1,0 @@
-################################################################
-# A-PSR (all layers) + Multi-Gate ablation -- starting at Fri Sep 18 09:08:17 PM UTC 2026
-# Task: caveman   Log: results/caveman/all_layer_20260918_210817.log
-################################################################
-
-== pre-flight checks ==
-openai.key: found
-CUDA: available
-pre-flight checks passed.
-
-== [2026-09-18 21:08:20] START: A-PSR (trained directions), both loss configs ==
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<02:58,  1.90it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 11.99it/s]Loading weights:   5%|▌         | 17/339 [00:00<00:09, 32.93it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 53.33it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 65.93it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 75.24it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 82.10it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 86.86it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 90.38it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 93.01it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 94.76it/s]Loading weights:  37%|███▋      | 125/339 [00:01<00:02, 93.20it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 97.13it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 97.63it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 97.99it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 98.31it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 98.36it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 97.93it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 98.24it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 98.48it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 98.29it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 98.11it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 98.42it/s]Loading weights:  79%|███████▉  | 268/339 [00:03<00:00, 93.63it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 100.45it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 99.75it/s] Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 99.42it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 99.04it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 98.93it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 86.07it/s]
-psr_all_layer sweep: 2 loss configs x 28 layers (all layers, no layer sweep -- A-PSR has no layer hyperparameter)
->>> resuming sweep: 2 grid point(s) already in results/caveman/psr_all_layer_sweep.jsonl
-
-wrote 2 sweep rows to results/caveman/psr_all_layer_sweep.jsonl
-checkpoints saved per loss config -- compare them by JUDGED evaluation (scripts/eval_all_layer_variants.py), not by final_mse across different objectives
-== [2026-09-18 21:08:35] OK: A-PSR (trained directions), both loss configs ==
-
-== [2026-09-18 21:08:35] START: Multi-Gate ablation (diff-in-means directions), both loss configs ==
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:21,  4.17it/s]Loading weights:   1%|          | 2/339 [00:00<01:29,  3.75it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 12.24it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 37.36it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 55.39it/s]Loading weights:  12%|█▏        | 42/339 [00:00<00:04, 68.06it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 77.02it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 83.12it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:02, 87.67it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 91.01it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 93.12it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 94.73it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 95.98it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 96.63it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 97.23it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 97.82it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 98.10it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 98.30it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 98.51it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 98.58it/s]Loading weights:  65%|██████▌   | 221/339 [00:02<00:01, 96.14it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 99.42it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 99.23it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 99.17it/s]Loading weights:  79%|███████▉  | 269/339 [00:03<00:00, 95.72it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 98.84it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 97.99it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 97.75it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 98.06it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 98.05it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 85.95it/s]
-psr_multi_gate sweep: 2 loss configs x 28 layers (all layers, no layer sweep -- A-PSR has no layer hyperparameter)
->>> resuming sweep: 2 grid point(s) already in results/caveman/psr_multi_gate_sweep.jsonl
-
-wrote 2 sweep rows to results/caveman/psr_multi_gate_sweep.jsonl
-checkpoints saved per loss config -- compare them by JUDGED evaluation (scripts/eval_all_layer_variants.py), not by final_mse across different objectives
-== [2026-09-18 21:08:51] OK: Multi-Gate ablation (diff-in-means directions), both loss configs ==
-
-== [2026-09-18 21:08:51] START: Multi-Gate + CONCEPTOR directions, both loss configs ==
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:20,  4.17it/s]Loading weights:   1%|          | 2/339 [00:00<01:29,  3.79it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:26, 12.38it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 37.71it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 55.71it/s]Loading weights:  12%|█▏        | 42/339 [00:00<00:04, 68.48it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 77.54it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 83.96it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:02, 88.35it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 91.50it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 93.86it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 95.43it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 96.63it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 96.59it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 96.95it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 96.77it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 96.26it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 97.09it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 97.50it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 97.83it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 98.10it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 97.78it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 96.82it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 97.40it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 97.67it/s]Loading weights:  83%|████████▎ | 281/339 [00:03<00:00, 94.85it/s]Loading weights:  86%|████████▌ | 292/339 [00:03<00:00, 93.88it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 100.33it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 100.16it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 99.66it/s] Loading weights: 100%|██████████| 339/339 [00:03<00:00, 86.05it/s]
-psr_multi_gate_conceptor sweep: 2 loss configs x 28 layers (all layers, no layer sweep -- A-PSR has no layer hyperparameter)
-psr_multi_gate_conceptor mse_weight=1.0 nll_weight=0.0 final_mse=11.2993 final_nll=38.7855 -> psr_multi_gate_conceptor_probe_mse.pt
-psr_multi_gate_conceptor mse_weight=0.0 nll_weight=1.0 final_mse=14.3512 final_nll=36.7488 -> psr_multi_gate_conceptor_probe_nll.pt
-
-wrote 2 sweep rows to results/caveman/psr_multi_gate_conceptor_sweep.jsonl
-checkpoints saved per loss config -- compare them by JUDGED evaluation (scripts/eval_all_layer_variants.py), not by final_mse across different objectives
-== [2026-09-18 21:13:14] OK: Multi-Gate + CONCEPTOR directions, both loss configs ==
-
-== [2026-09-18 21:13:14] START: judged evaluation of all 6 configs (alone + combined) vs Base/Prompt ==
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<02:59,  1.89it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 11.92it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:09, 34.72it/s]Loading weights:   9%|▊         | 29/339 [00:00<00:06, 49.86it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 65.64it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 74.13it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 79.89it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:03, 85.32it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 88.40it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 91.72it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 93.66it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 94.92it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 95.79it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 96.51it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 97.12it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 97.58it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 97.89it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 98.01it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 98.28it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 98.22it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 98.43it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 98.27it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 98.53it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 98.52it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 98.72it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 98.96it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 98.91it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 98.91it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 98.90it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 85.61it/s]
-
-generating Base and Prompt baselines once (n=180, shared across all configs) ...
-
-== A-PSR (MSE) ==
-   28 layers hooked, direction_source=trained
-
-== A-PSR (NLL) ==
-   28 layers hooked, direction_source=trained
-
-== Multi-Gate (MSE) ==
-   28 layers hooked, direction_source=diff_in_means
-
-== Multi-Gate (NLL) ==
-   28 layers hooked, direction_source=diff_in_means
-
-== MG-Conceptor (MSE) ==
-   28 layers hooked, direction_source=conceptor
-
-== MG-Conceptor (NLL) ==
-   28 layers hooked, direction_source=conceptor
-
-condition                       avg_tokens   correct   coherent
----------------------------------------------------------------
-base                                 149.9     1.939       1.00
-prompt                                57.9     1.939       1.00
-A-PSR (MSE) alone                     85.4     1.989       1.00
-Prompt + A-PSR (MSE)                  40.9     1.756       1.00
-A-PSR (NLL) alone                    114.6     1.972       1.00
-Prompt + A-PSR (NLL)                  68.6     1.678       0.94
-Multi-Gate (MSE) alone                92.9     1.978       1.00
-Prompt + Multi-Gate (MSE)             31.7     1.800       1.00
-Multi-Gate (NLL) alone               100.9     1.983       1.00
-Prompt + Multi-Gate (NLL)             29.7     1.739       1.00
-MG-Conceptor (MSE) alone              93.4     1.978       1.00
-Prompt + MG-Conceptor (MSE)           28.7     1.683       1.00
-MG-Conceptor (NLL) alone              94.5     1.978       1.00
-Prompt + MG-Conceptor (NLL)           29.5     1.739       1.00
-
-== paired vs Prompt alone (n=180) ==
-  A-PSR (MSE) alone              correctness diff=+0.0500 [+0.0167, +0.0889] -- BEATS Prompt   (tokens 85.4 vs 57.9)
-  Prompt + A-PSR (MSE)           correctness diff=-0.1833 [-0.2444, -0.1278] -- WORSE than Prompt   (tokens 40.9 vs 57.9)
-  A-PSR (NLL) alone              correctness diff=+0.0333 [-0.0056, +0.0778] -- ties Prompt   (tokens 114.6 vs 57.9)
-  Prompt + A-PSR (NLL)           correctness diff=-0.2611 [-0.3333, -0.2000] -- WORSE than Prompt   (tokens 68.6 vs 57.9)
-  Multi-Gate (MSE) alone         correctness diff=+0.0389 [+0.0000, +0.0778] -- ties Prompt   (tokens 92.9 vs 57.9)
-  Prompt + Multi-Gate (MSE)      correctness diff=-0.1389 [-0.2000, -0.0778] -- WORSE than Prompt   (tokens 31.7 vs 57.9)
-  Multi-Gate (NLL) alone         correctness diff=+0.0444 [+0.0111, +0.0833] -- BEATS Prompt   (tokens 100.9 vs 57.9)
-  Prompt + Multi-Gate (NLL)      correctness diff=-0.2000 [-0.2667, -0.1333] -- WORSE than Prompt   (tokens 29.7 vs 57.9)
-  MG-Conceptor (MSE) alone       correctness diff=+0.0389 [+0.0056, +0.0778] -- BEATS Prompt   (tokens 93.4 vs 57.9)
-  Prompt + MG-Conceptor (MSE)    correctness diff=-0.2556 [-0.3222, -0.1944] -- WORSE than Prompt   (tokens 28.7 vs 57.9)
-  MG-Conceptor (NLL) alone       correctness diff=+0.0389 [+0.0000, +0.0778] -- ties Prompt   (tokens 94.5 vs 57.9)
-  Prompt + MG-Conceptor (NLL)    correctness diff=-0.2000 [-0.2611, -0.1389] -- WORSE than Prompt   (tokens 29.5 vs 57.9)
-
-wrote results/caveman/all_layer_variants_eval.json
-== [2026-09-18 21:24:38] OK: judged evaluation of all 6 configs (alone + combined) vs Base/Prompt ==
-
-== [2026-09-18 21:24:38] START: corrected-sign analysis + plots ==
-
-=== all-layer results, n=180 (recomputed from disk) ===
-condition               avg_tokens   correct              95% CI   coherent
----------------------------------------------------------------------------
-Base                         149.9     1.939      [1.900, 1.972]       1.00
-Prompt                        57.9     1.939      [1.906, 1.972]       1.00
-A-PSR (MSE)                   85.4     1.989      [1.972, 2.000]       1.00
-A-PSR (NLL)                  114.6     1.972      [1.944, 1.994]       1.00
-Multi-Gate (MSE)              92.9     1.978      [1.956, 1.994]       1.00
-Multi-Gate (NLL)             100.9     1.983      [1.961, 2.000]       1.00
-MG-Conceptor (MSE)            93.4     1.978      [1.956, 1.994]       1.00
-MG-Conceptor (NLL)            94.5     1.978      [1.956, 1.994]       1.00
-P+A-PSR (MSE)                 40.9     1.756      [1.689, 1.817]       1.00
-P+A-PSR (NLL)                 68.6     1.678      [1.606, 1.744]       0.94
-P+Multi-Gate (MSE)            31.7     1.800      [1.739, 1.856]       1.00
-P+Multi-Gate (NLL)            29.7     1.739      [1.672, 1.806]       1.00
-P+MG-Conceptor (MSE)          28.7     1.683      [1.617, 1.750]       1.00
-P+MG-Conceptor (NLL)          29.5     1.739      [1.672, 1.800]       1.00
-
-=== paired vs Prompt alone, CORRECTED SIGN (candidate - prompt; positive = better) ===
-  A-PSR (MSE)            correctness +0.0500 [+0.0167, +0.0833] BEATS Prompt       | 85.4 vs 57.9 tok (MORE tokens)
-  A-PSR (NLL)            correctness +0.0333 [-0.0056, +0.0722] ties Prompt        | 114.6 vs 57.9 tok (MORE tokens)
-  Multi-Gate (MSE)       correctness +0.0389 [+0.0000, +0.0833] ties Prompt        | 92.9 vs 57.9 tok (MORE tokens)
-  Multi-Gate (NLL)       correctness +0.0444 [+0.0111, +0.0833] BEATS Prompt       | 100.9 vs 57.9 tok (MORE tokens)
-  MG-Conceptor (MSE)     correctness +0.0389 [+0.0000, +0.0778] ties Prompt        | 93.4 vs 57.9 tok (MORE tokens)
-  MG-Conceptor (NLL)     correctness +0.0389 [+0.0000, +0.0778] ties Prompt        | 94.5 vs 57.9 tok (MORE tokens)
-  P+A-PSR (MSE)          correctness -0.1833 [-0.2444, -0.1278] WORSE than Prompt  | 40.9 vs 57.9 tok (fewer tokens)
-  P+A-PSR (NLL)          correctness -0.2611 [-0.3278, -0.2000] WORSE than Prompt  | 68.6 vs 57.9 tok (MORE tokens)
-  P+Multi-Gate (MSE)     correctness -0.1389 [-0.2000, -0.0833] WORSE than Prompt  | 31.7 vs 57.9 tok (fewer tokens)
-  P+Multi-Gate (NLL)     correctness -0.2000 [-0.2611, -0.1333] WORSE than Prompt  | 29.7 vs 57.9 tok (fewer tokens)
-  P+MG-Conceptor (MSE)   correctness -0.2556 [-0.3222, -0.1889] WORSE than Prompt  | 28.7 vs 57.9 tok (fewer tokens)
-  P+MG-Conceptor (NLL)   correctness -0.2000 [-0.2611, -0.1389] WORSE than Prompt  | 29.5 vs 57.9 tok (fewer tokens)
-
-wrote plots/all_layer_frontier.png
-wrote plots/all_layer_correct_bars.png
-wrote plots/all_layer_tokens_bars.png
-== [2026-09-18 21:24:48] OK: corrected-sign analysis + plots ==
-
-== [2026-09-18 21:24:48] START: cosine similarity matrix + per-layer depth profile ==
-loading model for const/stolfo's on-the-fly direction recompute (cheap -- pooled activations already cached) ...
-[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:22,  4.10it/s]Loading weights:   1%|          | 2/339 [00:00<01:30,  3.74it/s]Loading weights:   2%|▏         | 6/339 [00:00<00:27, 12.19it/s]Loading weights:   5%|▌         | 18/339 [00:00<00:08, 37.24it/s]Loading weights:   9%|▉         | 30/339 [00:00<00:05, 55.20it/s]Loading weights:  12%|█▏        | 42/339 [00:01<00:04, 67.81it/s]Loading weights:  16%|█▌        | 54/339 [00:01<00:03, 76.82it/s]Loading weights:  19%|█▉        | 66/339 [00:01<00:03, 83.16it/s]Loading weights:  23%|██▎       | 78/339 [00:01<00:02, 87.72it/s]Loading weights:  27%|██▋       | 90/339 [00:01<00:02, 90.83it/s]Loading weights:  30%|███       | 102/339 [00:01<00:02, 93.22it/s]Loading weights:  34%|███▎      | 114/339 [00:01<00:02, 94.68it/s]Loading weights:  37%|███▋      | 126/339 [00:01<00:02, 95.72it/s]Loading weights:  41%|████      | 138/339 [00:01<00:02, 96.38it/s]Loading weights:  44%|████▍     | 150/339 [00:02<00:01, 97.05it/s]Loading weights:  48%|████▊     | 162/339 [00:02<00:01, 97.69it/s]Loading weights:  51%|█████▏    | 174/339 [00:02<00:01, 98.21it/s]Loading weights:  55%|█████▍    | 186/339 [00:02<00:01, 98.53it/s]Loading weights:  58%|█████▊    | 198/339 [00:02<00:01, 98.71it/s]Loading weights:  62%|██████▏   | 210/339 [00:02<00:01, 98.74it/s]Loading weights:  65%|██████▌   | 222/339 [00:02<00:01, 98.94it/s]Loading weights:  69%|██████▉   | 234/339 [00:02<00:01, 98.88it/s]Loading weights:  73%|███████▎  | 246/339 [00:03<00:00, 98.82it/s]Loading weights:  76%|███████▌  | 258/339 [00:03<00:00, 98.56it/s]Loading weights:  80%|███████▉  | 270/339 [00:03<00:00, 98.74it/s]Loading weights:  83%|████████▎ | 282/339 [00:03<00:00, 99.01it/s]Loading weights:  87%|████████▋ | 294/339 [00:03<00:00, 99.16it/s]Loading weights:  90%|█████████ | 306/339 [00:03<00:00, 99.21it/s]Loading weights:  94%|█████████▍| 318/339 [00:03<00:00, 99.12it/s]Loading weights:  97%|█████████▋| 330/339 [00:03<00:00, 99.24it/s]Loading weights: 100%|██████████| 339/339 [00:03<00:00, 86.21it/s]
-
-12 vectors loaded (d=3584):
-  psr_proper_probe       source=psr_proper_probe_tiered_winner.pt  ||v||=1.8383
-  psr_conceptor_probe    source=psr_conceptor_probe_tiered_winner.pt  ||v||=1.0000
-  psr_probe              source=psr_probe.pt  ||v||=1.0000
-  a_psr_probe@L14        source=a_psr_probe.pt (4 layers)  ||v||=1.0000
-  psr_all_layer_probe_mse@L14 source=psr_all_layer_probe_mse.pt (28 layers, direction_source=trained)  ||v||=1.0738
-  psr_all_layer_probe_nll@L14 source=psr_all_layer_probe_nll.pt (28 layers, direction_source=trained)  ||v||=1.6862
-  psr_multi_gate_probe_mse@L14 source=psr_multi_gate_probe_mse.pt (28 layers, direction_source=diff_in_means)  ||v||=1.0000
-  psr_multi_gate_probe_nll@L14 source=psr_multi_gate_probe_nll.pt (28 layers, direction_source=diff_in_means)  ||v||=1.0000
-  psr_multi_gate_conceptor_probe_mse@L14 source=psr_multi_gate_conceptor_probe_mse.pt (28 layers, direction_source=conceptor, alpha=4.0)  ||v||=1.0000
-  psr_multi_gate_conceptor_probe_nll@L14 source=psr_multi_gate_conceptor_probe_nll.pt (28 layers, direction_source=conceptor, alpha=4.0)  ||v||=1.0000
-  const                  source=const_tiered_search.jsonl Final (layer=18)  ||v||=1.0000
-  stolfo                 source=stolfo_tiered_search.jsonl Final (layer=16)  ||v||=1.0000
-
-                      psr_proper_probepsr_conceptor_probe       psr_probe a_psr_probe@L14psr_all_layer_probe_mse@L14psr_all_layer_probe_nll@L14psr_multi_gate_probe_mse@L14psr_multi_gate_probe_nll@L14psr_multi_gate_conceptor_probe_mse@L14psr_multi_gate_conceptor_probe_nll@L14           const          stolfo
-psr_proper_probe                1.0000          0.2045          0.1584          0.1584          0.3105          0.2939          0.2016          0.2016          0.2141          0.2141          0.2008          0.1971
-psr_conceptor_probe             0.2045          1.0000          0.3395          0.3395          0.3083          0.0519          0.7626          0.7626          0.7914          0.7914          0.7495          0.9560
-psr_probe                       0.1584          0.3395          1.0000          1.0000          0.3096          0.0581          0.3411          0.3411          0.3749          0.3749          0.2846          0.2966
-a_psr_probe@L14                 0.1584          0.3395          1.0000          1.0000          0.3096          0.0581          0.3411          0.3411          0.3749          0.3749          0.2846          0.2966
-psr_all_layer_probe_mse@L14          0.3105          0.3083          0.3096          0.3096          1.0000          0.2813          0.3003          0.3003          0.3099          0.3099          0.2923          0.2997
-psr_all_layer_probe_nll@L14          0.2939          0.0519          0.0581          0.0581          0.2813          1.0000          0.0355          0.0355          0.0405          0.0405          0.0496          0.0471
-psr_multi_gate_probe_mse@L14          0.2016          0.7626          0.3411          0.3411          0.3003          0.0355          1.0000          1.0000          0.9812          0.9812          0.6112          0.7950
-psr_multi_gate_probe_nll@L14          0.2016          0.7626          0.3411          0.3411          0.3003          0.0355          1.0000          1.0000          0.9812          0.9812          0.6112          0.7950
-psr_multi_gate_conceptor_probe_mse@L14          0.2141          0.7914          0.3749          0.3749          0.3099          0.0405          0.9812          0.9812          1.0000          1.0000          0.6235          0.7951
-psr_multi_gate_conceptor_probe_nll@L14          0.2141          0.7914          0.3749          0.3749          0.3099          0.0405          0.9812          0.9812          1.0000          1.0000          0.6235          0.7951
-const                           0.2008          0.7495          0.2846          0.2846          0.2923          0.0496          0.6112          0.6112          0.6235          0.6235          1.0000          0.7572
-stolfo                          0.1971          0.9560          0.2966          0.2966          0.2997          0.0471          0.7950          0.7950          0.7951          0.7951          0.7572          1.0000
-
-=== per-layer cosine (multi-layer checkpoints, 21 pairs) ===
-
-  a_psr_probe vs psr_all_layer_probe_mse
-    mean|cos|=0.2433  min=+0.1898  max=+0.3096
-    by layer: 7:+0.212 14:+0.310 18:+0.261 22:+0.190
-
-  a_psr_probe vs psr_all_layer_probe_nll
-    mean|cos|=0.0750  min=+0.0361  max=+0.1284
-    by layer: 7:+0.036 14:+0.058 18:+0.077 22:+0.128
-
-  a_psr_probe vs psr_multi_gate_conceptor_probe_mse
-    mean|cos|=0.4248  min=+0.3749  max=+0.4720
-    by layer: 7:+0.472 14:+0.375 18:+0.403 22:+0.449
-
-  a_psr_probe vs psr_multi_gate_conceptor_probe_nll
-    mean|cos|=0.4248  min=+0.3749  max=+0.4720
-    by layer: 7:+0.472 14:+0.375 18:+0.403 22:+0.449
-
-  a_psr_probe vs psr_multi_gate_probe_mse
-    mean|cos|=0.3878  min=+0.3411  max=+0.4417
-    by layer: 7:+0.387 14:+0.341 18:+0.381 22:+0.442
-
-  a_psr_probe vs psr_multi_gate_probe_nll
-    mean|cos|=0.3878  min=+0.3411  max=+0.4417
-    by layer: 7:+0.387 14:+0.341 18:+0.381 22:+0.442
-
-  psr_all_layer_probe_mse vs psr_all_layer_probe_nll
-    mean|cos|=0.2238  min=-0.0407  max=+0.5112
-    by layer: 0:+0.194 1:+0.297 2:+0.397 3:+0.155 4:+0.224 5:+0.378 6:+0.163 7:+0.353 8:+0.268 9:+0.160 10:+0.511 11:+0.292 12:+0.494 13:+0.417 14:+0.281 15:+0.436 16:+0.116 17:+0.214 18:+0.287 19:+0.069 20:+0.190 21:+0.076 22:+0.073 23:+0.076 24:+0.034 25:+0.047 26:+0.023 27:-0.041
-
-  psr_all_layer_probe_mse vs psr_multi_gate_conceptor_probe_mse
-    mean|cos|=0.1731  min=+0.0144  max=+0.3385
-    by layer: 0:+0.108 1:+0.139 2:+0.086 3:+0.239 4:+0.153 5:+0.209 6:+0.142 7:+0.176 8:+0.165 9:+0.200 10:+0.205 11:+0.140 12:+0.157 13:+0.228 14:+0.310 15:+0.227 16:+0.243 17:+0.325 18:+0.244 19:+0.339 20:+0.194 21:+0.098 22:+0.180 23:+0.112 24:+0.115 25:+0.043 26:+0.014 27:+0.055
-
-  psr_all_layer_probe_mse vs psr_multi_gate_conceptor_probe_nll
-    mean|cos|=0.1731  min=+0.0144  max=+0.3385
-    by layer: 0:+0.108 1:+0.139 2:+0.086 3:+0.239 4:+0.153 5:+0.209 6:+0.142 7:+0.176 8:+0.165 9:+0.200 10:+0.205 11:+0.140 12:+0.157 13:+0.228 14:+0.310 15:+0.227 16:+0.243 17:+0.325 18:+0.244 19:+0.339 20:+0.194 21:+0.098 22:+0.180 23:+0.112 24:+0.115 25:+0.043 26:+0.014 27:+0.055
-
-  psr_all_layer_probe_mse vs psr_multi_gate_probe_mse
-    mean|cos|=0.1557  min=+0.0144  max=+0.3296
-    by layer: 0:+0.028 1:+0.078 2:+0.060 3:+0.157 4:+0.123 5:+0.173 6:+0.125 7:+0.156 8:+0.147 9:+0.181 10:+0.192 11:+0.124 12:+0.154 13:+0.230 14:+0.300 15:+0.220 16:+0.236 17:+0.314 18:+0.237 19:+0.330 20:+0.189 21:+0.097 22:+0.177 23:+0.111 24:+0.114 25:+0.043 26:+0.014 27:+0.050
-
-  psr_all_layer_probe_mse vs psr_multi_gate_probe_nll
-    mean|cos|=0.1557  min=+0.0144  max=+0.3296
-    by layer: 0:+0.028 1:+0.078 2:+0.060 3:+0.157 4:+0.123 5:+0.173 6:+0.125 7:+0.156 8:+0.147 9:+0.181 10:+0.192 11:+0.124 12:+0.154 13:+0.230 14:+0.300 15:+0.220 16:+0.236 17:+0.314 18:+0.237 19:+0.330 20:+0.189 21:+0.097 22:+0.177 23:+0.111 24:+0.114 25:+0.043 26:+0.014 27:+0.050
-
-  psr_all_layer_probe_nll vs psr_multi_gate_conceptor_probe_mse
-    mean|cos|=0.0505  min=-0.0263  max=+0.1167
-    by layer: 0:-0.026 1:+0.031 2:+0.039 3:+0.048 4:+0.036 5:+0.066 6:+0.025 7:+0.076 8:+0.039 9:-0.007 10:+0.088 11:+0.080 12:+0.066 13:+0.075 14:+0.041 15:+0.117 16:+0.011 17:+0.033 18:+0.107 19:+0.022 20:+0.102 21:+0.028 22:+0.062 23:+0.037 24:+0.026 25:+0.071 26:+0.035 27:+0.018
-
-  psr_all_layer_probe_nll vs psr_multi_gate_conceptor_probe_nll
-    mean|cos|=0.0505  min=-0.0263  max=+0.1167
-    by layer: 0:-0.026 1:+0.031 2:+0.039 3:+0.048 4:+0.036 5:+0.066 6:+0.025 7:+0.076 8:+0.039 9:-0.007 10:+0.088 11:+0.080 12:+0.066 13:+0.075 14:+0.041 15:+0.117 16:+0.011 17:+0.033 18:+0.107 19:+0.022 20:+0.102 21:+0.028 22:+0.062 23:+0.037 24:+0.026 25:+0.071 26:+0.035 27:+0.018
-
-  psr_all_layer_probe_nll vs psr_multi_gate_probe_mse
-    mean|cos|=0.0465  min=-0.0081  max=+0.1113
-    by layer: 0:-0.008 1:+0.038 2:+0.033 3:+0.037 4:+0.019 5:+0.054 6:+0.025 7:+0.060 8:+0.036 9:-0.003 10:+0.082 11:+0.078 12:+0.061 13:+0.075 14:+0.035 15:+0.111 16:+0.013 17:+0.034 18:+0.104 19:+0.021 20:+0.102 21:+0.026 22:+0.061 23:+0.037 24:+0.026 25:+0.071 26:+0.035 27:+0.018
-
-  psr_all_layer_probe_nll vs psr_multi_gate_probe_nll
-    mean|cos|=0.0465  min=-0.0081  max=+0.1113
-    by layer: 0:-0.008 1:+0.038 2:+0.033 3:+0.037 4:+0.019 5:+0.054 6:+0.025 7:+0.060 8:+0.036 9:-0.003 10:+0.082 11:+0.078 12:+0.061 13:+0.075 14:+0.035 15:+0.111 16:+0.013 17:+0.034 18:+0.104 19:+0.021 20:+0.102 21:+0.026 22:+0.061 23:+0.037 24:+0.026 25:+0.071 26:+0.035 27:+0.018
-
-  psr_multi_gate_conceptor_probe_mse vs psr_multi_gate_conceptor_probe_nll
-    mean|cos|=1.0000  min=+1.0000  max=+1.0000
-    by layer: 0:+1.000 1:+1.000 2:+1.000 3:+1.000 4:+1.000 5:+1.000 6:+1.000 7:+1.000 8:+1.000 9:+1.000 10:+1.000 11:+1.000 12:+1.000 13:+1.000 14:+1.000 15:+1.000 16:+1.000 17:+1.000 18:+1.000 19:+1.000 20:+1.000 21:+1.000 22:+1.000 23:+1.000 24:+1.000 25:+1.000 26:+1.000 27:+1.000
-
-  psr_multi_gate_conceptor_probe_mse vs psr_multi_gate_probe_mse
-    mean|cos|=0.9449  min=+0.6424  max=+0.9999
-    by layer: 0:+0.642 1:+0.722 2:+0.790 3:+0.870 4:+0.895 5:+0.919 6:+0.934 7:+0.955 8:+0.963 9:+0.966 10:+0.965 11:+0.968 12:+0.973 13:+0.973 14:+0.981 15:+0.983 16:+0.988 17:+0.992 18:+0.993 19:+0.996 20:+0.998 21:+0.999 22:+0.999 23:+1.000 24:+1.000 25:+1.000 26:+1.000 27:+0.997
-
-  psr_multi_gate_conceptor_probe_mse vs psr_multi_gate_probe_nll
-    mean|cos|=0.9449  min=+0.6424  max=+0.9999
-    by layer: 0:+0.642 1:+0.722 2:+0.790 3:+0.870 4:+0.895 5:+0.919 6:+0.934 7:+0.955 8:+0.963 9:+0.966 10:+0.965 11:+0.968 12:+0.973 13:+0.973 14:+0.981 15:+0.983 16:+0.988 17:+0.992 18:+0.993 19:+0.996 20:+0.998 21:+0.999 22:+0.999 23:+1.000 24:+1.000 25:+1.000 26:+1.000 27:+0.997
-
-  psr_multi_gate_conceptor_probe_nll vs psr_multi_gate_probe_mse
-    mean|cos|=0.9449  min=+0.6424  max=+0.9999
-    by layer: 0:+0.642 1:+0.722 2:+0.790 3:+0.870 4:+0.895 5:+0.919 6:+0.934 7:+0.955 8:+0.963 9:+0.966 10:+0.965 11:+0.968 12:+0.973 13:+0.973 14:+0.981 15:+0.983 16:+0.988 17:+0.992 18:+0.993 19:+0.996 20:+0.998 21:+0.999 22:+0.999 23:+1.000 24:+1.000 25:+1.000 26:+1.000 27:+0.997
-
-  psr_multi_gate_conceptor_probe_nll vs psr_multi_gate_probe_nll
-    mean|cos|=0.9449  min=+0.6424  max=+0.9999
-    by layer: 0:+0.642 1:+0.722 2:+0.790 3:+0.870 4:+0.895 5:+0.919 6:+0.934 7:+0.955 8:+0.963 9:+0.966 10:+0.965 11:+0.968 12:+0.973 13:+0.973 14:+0.981 15:+0.983 16:+0.988 17:+0.992 18:+0.993 19:+0.996 20:+0.998 21:+0.999 22:+0.999 23:+1.000 24:+1.000 25:+1.000 26:+1.000 27:+0.997
-
-  psr_multi_gate_probe_mse vs psr_multi_gate_probe_nll
-    mean|cos|=1.0000  min=+1.0000  max=+1.0000
-    by layer: 0:+1.000 1:+1.000 2:+1.000 3:+1.000 4:+1.000 5:+1.000 6:+1.000 7:+1.000 8:+1.000 9:+1.000 10:+1.000 11:+1.000 12:+1.000 13:+1.000 14:+1.000 15:+1.000 16:+1.000 17:+1.000 18:+1.000 19:+1.000 20:+1.000 21:+1.000 22:+1.000 23:+1.000 24:+1.000 25:+1.000 26:+1.000 27:+1.000
-
-wrote results/caveman/cosine_similarity_by_layer.csv
-
-wrote results/caveman/cosine_similarity_matrix.csv
-wrote results/caveman/cosine_similarity_matrix.json
-== [2026-09-18 21:25:04] OK: cosine similarity matrix + per-layer depth profile ==
-
-################################################################
-# DONE at Fri Sep 18 09:25:04 PM UTC 2026. Completed with no failures.
-# Checkpoints: results/caveman/psr_all_layer_probe_{mse,nll}.pt
-#              results/caveman/psr_multi_gate_probe_{mse,nll}.pt
-#              results/caveman/psr_multi_gate_conceptor_probe_{mse,nll}.pt
-# Cosine:      results/caveman/cosine_similarity_{matrix.csv,matrix.json,by_layer.csv}
-# Plots:       plots/all_layer_{frontier,correct_bars,tokens_bars}.png
-# Sweep rows:  results/caveman/psr_{all_layer,multi_gate}_sweep.jsonl
-# Eval table:  results/caveman/all_layer_variants_eval.json
-# Full log:    results/caveman/all_layer_20260918_210817.log
-################################################################

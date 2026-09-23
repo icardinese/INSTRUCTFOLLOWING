@@ -102,7 +102,7 @@ PY
 # persistent box later. Sweeps append per point, so nothing here is wasted if it does get cut.
 echo ""
 echo "=== launching ==="
-export SWEEP_LAYERS="${SWEEP_LAYERS:-10,14,18,22}"
+# export SWEEP_LAYERS="${SWEEP_LAYERS:-10,14,18,22}"
 export MAX_BATCH_ROWS="${MAX_BATCH_ROWS:-11}"
-echo "SWEEP_LAYERS=$SWEEP_LAYERS  MAX_BATCH_ROWS=$MAX_BATCH_ROWS"
+# echo "SWEEP_LAYERS=$SWEEP_LAYERS  MAX_BATCH_ROWS=$MAX_BATCH_ROWS"
 exec bash infra/run_triage_overnight.sh

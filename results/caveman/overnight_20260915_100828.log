@@ -1,9 +1,0 @@
-################################################################
-# Overnight caveman run starting at Tue Sep 15 10:08:28 AM UTC 2026
-# Log: results/caveman/overnight_20260915_100828.log
-################################################################
-
-== pre-flight checks ==
-PRE-FLIGHT FAILURE: openai.key not found at repo root -- evals/run_judge.py needs it
-  for BOTH the correctness/coherence AND the new conciseness judge call. Create it
-  (a plain text file containing your API key, nothing else) before running this.
