@@ -38,6 +38,8 @@ from pathlib import Path
 
 import torch
 
+from core import gate_store as _gate_store
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from adapters.registry import get_adapter
@@ -220,6 +222,8 @@ def sweep_sg_layers(task, sweep_layers=None, loss_config_grid=None, seed=42, dev
     adapter, model, tokenizer, n_layers, train_items, dev_items, tr, dv = _setup(task, device)
     print(f"sg_clamp layer sweep: {len(sweep_layers)} layers x {len(loss_config_grid)} loss configs")
 
+    _fp = _gate_store.fingerprint(seed, train_items, tr, dev_items)
+
     def train_fn(point):
         layer = point["layer"]
         r = train_one_config(
@@ -229,6 +233,7 @@ def sweep_sg_layers(task, sweep_layers=None, loss_config_grid=None, seed=42, dev
         suffix = "_mse" if point["mse_weight"] else "_nll"
         _save(adapter.RESULTS_DIR / f"sg_clamp_L{layer}_probe{suffix}.pt", r, [layer], task,
               point["mse_weight"], point["nll_weight"])
+        _gate_store.save(_gate_store.point_path(adapter.RESULTS_DIR, "sg_clamp", point, _fp), "sg_clamp", r)
         print(f"sg_clamp layer={layer} mse_w={point['mse_weight']} nll_w={point['nll_weight']} "
               f"final_mse={r['final_mse']:.4f} final_nll={r['final_nll']:.4f}")
         return {k: v for k, v in r.items() if k not in ("gates", "directions", "targets")}

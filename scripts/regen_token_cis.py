@@ -134,7 +134,9 @@ def main(task: str, n: int, seed: int, max_batch_rows: int, only: list[str] | No
     ctx = SearchContext(model=model, tokenizer=tokenizer, n_layers=num_layers(model),
                          hidden_size=model.config.hidden_size, cache_dir=adapter.CACHE_DIR,
                          train_items=train_items, dev_items=dev_items,
-                         train_responses=tr, dev_responses=dv, seed=seed)
+                         train_responses=tr, dev_responses=dv, seed=seed,
+                         # load each winner's gate from core/gate_store instead of retraining it
+                         results_dir=adapter.RESULTS_DIR)
 
     test_rows = adapter.load_rows("test")[:n]
     test_items = adapter.to_items(tokenizer, test_rows)

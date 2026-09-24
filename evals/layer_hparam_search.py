@@ -89,35 +89,85 @@ class SearchContext:
     train_responses: dict
     dev_responses: dict
     seed: int = 42
+    # Where core/gate_store.py keeps trained gates. None disables the store (plain retrain, the
+    # old behaviour) so any caller that builds a SearchContext without it keeps working.
+    results_dir: Path | None = None
+    _fingerprint: str | None = None
+
+    def fingerprint(self) -> str:
+        if self._fingerprint is None:
+            from core import gate_store
+            self._fingerprint = gate_store.fingerprint(
+                self.seed, self.train_items, self.train_responses, self.dev_items)
+        return self._fingerprint
 
 
-def _retrain_proper(row: dict, ctx: SearchContext):
-    from src.psr.proper.train import train_one_config
+def _stored(variant: str, train_fn, hook_fn, legacy_fn=None):
+    """Train a config AT MOST ONCE, ever. Load it from core/gate_store if present; otherwise train,
+    save, and return. See core/gate_store.py for why: without this, a winning config was trained
+    five times (sweep, Tier 1, Tier 2, Final, regen_token_cis), each time from scratch.
+
+    Loading is not an approximation of retraining -- it is the SAME weights, which is strictly
+    better: the gate evaluated is literally the one whose metrics were logged, rather than a re-run
+    that bf16 nondeterminism may not reproduce bit-for-bit.
+
+    legacy_fn(row, ctx) may return an already-trained result from an older on-disk format (used
+    for SG+Clamp's per-layer probes); it is imported into the store on first use.
+    """
+    from core import gate_store
+
+    def wrapped(row: dict, ctx: "SearchContext"):
+        if ctx.results_dir is None:
+            return hook_fn(train_fn(row, ctx), row)
+        path = gate_store.point_path(ctx.results_dir, variant, row, ctx.fingerprint())
+        result = gate_store.load(path)
+        if result is not None:
+            print(f"  [gate store] loaded {variant} {path.name} -- no retrain", flush=True)
+            return hook_fn(result, row)
+        result = legacy_fn(row, ctx) if legacy_fn is not None else None
+        if result is not None:
+            gate_store.save(path, variant, result)
+            print(f"  [gate store] imported legacy {variant} {path.name} -- no retrain", flush=True)
+            return hook_fn(result, row)
+        result = train_fn(row, ctx)
+        gate_store.save(path, variant, result)
+        print(f"  [gate store] trained once + saved {variant} {path.name}", flush=True)
+        return hook_fn(result, row)
+
+    return wrapped
+
+
+def _hook_gate(result: dict, row: dict):
+    """proper, sg and conceptor all apply the correction identically; they differ only in how the
+    direction was produced during training."""
     from steering.psr.gate import make_inference_hook
+    gate = GateState(result["weight"].to("cuda"), result["bias"].to("cuda"), result["coeff_bias"].to("cuda"))
+    return make_inference_hook(gate, result["direction"].to("cuda"))
+
+
+def _train_proper(row: dict, ctx: SearchContext):
+    from src.psr.proper.train import train_one_config
 
     result = train_one_config(
         ctx.model, ctx.tokenizer, row["layer"], ctx.seed, ctx.n_layers, ctx.hidden_size, "cuda",
         ctx.train_items, ctx.dev_items, ctx.train_responses, ctx.dev_responses,
         mse_weight=row["mse_weight"], nll_weight=row["nll_weight"],
     )
-    gate = GateState(result["weight"].to("cuda"), result["bias"].to("cuda"), result["coeff_bias"].to("cuda"))
-    return make_inference_hook(gate, result["direction"].to("cuda"))
+    return result
 
 
-def _retrain_single_gate(row: dict, ctx: SearchContext):
+def _train_single_gate(row: dict, ctx: SearchContext):
     """SG: trained gate, FROZEN diff-in-means direction. Identical plumbing to _retrain_proper --
     same make_inference_hook, same GateState -- because SG and S-PSR differ only in whether
     `direction` was in the optimizer during training, not in how the correction is applied."""
     from src.psr.single_gate.train import train_one_config
-    from steering.psr.gate import make_inference_hook
 
     result = train_one_config(
         ctx.model, ctx.tokenizer, row["layer"], ctx.seed, ctx.n_layers, ctx.hidden_size, "cuda",
         ctx.train_items, ctx.dev_items, ctx.train_responses, ctx.dev_responses, ctx.cache_dir,
         mse_weight=row["mse_weight"], nll_weight=row["nll_weight"],
     )
-    gate = GateState(result["weight"].to("cuda"), result["bias"].to("cuda"), result["coeff_bias"].to("cuda"))
-    return make_inference_hook(gate, result["direction"].to("cuda"))
+    return result
 
 
 def _clamp_direction_and_target(row: dict, ctx: SearchContext):
@@ -164,61 +214,103 @@ def _build_const_response_only(row: dict, ctx: SearchContext):
     return hook_fn
 
 
-def _retrain_sg_clamp(row: dict, ctx: SearchContext):
+def _train_sg_clamp(row: dict, ctx: SearchContext):
     """SG+Clamp: one trained gate scaling the closed-form clamp shortfall at one layer."""
     from src.psr.clamp_gate.train import train_one_config
-    from steering.clamp.hooks import make_gated_clamp_hook
 
     result = train_one_config(
         ctx.model, ctx.tokenizer, [row["layer"]], ctx.seed, ctx.n_layers, ctx.hidden_size, "cuda",
         ctx.train_items, ctx.dev_items, ctx.train_responses, ctx.dev_responses, ctx.cache_dir,
         mse_weight=row["mse_weight"], nll_weight=row["nll_weight"],
     )
+    return result
+
+
+def _train_conceptor(row: dict, ctx: SearchContext):
+    from src.psr.conceptor.train import train_one_config
+
+    result = train_one_config(
+        ctx.model, ctx.tokenizer, row["layer"], row["alpha"], ctx.seed, ctx.n_layers, "cuda",
+        ctx.train_items, ctx.dev_items, ctx.train_responses, ctx.dev_responses, ctx.cache_dir,
+        mse_weight=row["mse_weight"], nll_weight=row["nll_weight"],
+    )
+    return result
+
+
+def _train_conceptor_matrix(row: dict, ctx: SearchContext):
+    from src.psr.conceptor.matrix.train import train_one_config
+
+    result = train_one_config(
+        ctx.model, ctx.tokenizer, row["layer"], row["alpha"], ctx.seed, ctx.n_layers, "cuda",
+        ctx.train_items, ctx.dev_items, ctx.train_responses, ctx.dev_responses, ctx.cache_dir,
+        mse_weight=row["mse_weight"], nll_weight=row["nll_weight"],
+    )
+    return result
+
+
+def _train_conceptor_selfproj(row: dict, ctx: SearchContext):
+    from src.psr.conceptor.selfproj.train import train_one_config
+
+    result = train_one_config(
+        ctx.model, ctx.tokenizer, row["layer"], row["alpha"], ctx.seed, ctx.n_layers, "cuda",
+        ctx.train_items, ctx.dev_items, ctx.train_responses, ctx.dev_responses, ctx.cache_dir,
+        mse_weight=row["mse_weight"], nll_weight=row["nll_weight"],
+    )
+    return result
+
+
+def _hook_sg_clamp(result: dict, row: dict):
+    from steering.clamp.hooks import make_gated_clamp_hook
     l = row["layer"]
-    gate = GateState(result["gates"][l]["weight"].to("cuda"), result["gates"][l]["bias"].to("cuda"),
-                      result["gates"][l]["coeff_bias"].to("cuda"))
+    g = result["gates"][l]
+    gate = GateState(g["weight"].to("cuda"), g["bias"].to("cuda"), g["coeff_bias"].to("cuda"))
+    # targets are plain Python floats (clamp_gate stores float(targets[l])), so no device move.
     return make_gated_clamp_hook(gate, result["directions"][l].to("cuda"), result["targets"][l])
 
 
-def _retrain_conceptor(row: dict, ctx: SearchContext):
-    from src.psr.conceptor.train import train_one_config
-    from steering.psr.gate import make_inference_hook
+def _legacy_sg_clamp(row: dict, ctx: "SearchContext"):
+    """SG+Clamp's layer sweep already saved every layer's gate as sg_clamp_L{layer}_probe_{mse,nll}.pt
+    (src/psr/clamp_gate/train.py::sweep_sg_layers). Reuse them rather than retrain -- but only when
+    the file really is this exact point AND was trained on the current epoch budget, so a probe
+    from an older configuration can never be passed off as this one."""
+    from steering.psr.reference_config import epochs_for
+    suffix = "_mse" if row["mse_weight"] else "_nll"
+    path = Path(ctx.results_dir) / f"sg_clamp_L{row['layer']}_probe{suffix}.pt"
+    if not path.exists():
+        return None
+    try:
+        d = torch.load(path, map_location="cpu", weights_only=False)
+    except Exception:
+        return None
+    ok = (list(d.get("layer_indices", [])) == [row["layer"]]
+          and d.get("mse_weight") == row["mse_weight"] and d.get("nll_weight") == row["nll_weight"]
+          and d.get("completed_epochs") == epochs_for(row["mse_weight"], row["nll_weight"]))
+    return d if ok else None
 
-    result = train_one_config(
-        ctx.model, ctx.tokenizer, row["layer"], row["alpha"], ctx.seed, ctx.n_layers, "cuda",
-        ctx.train_items, ctx.dev_items, ctx.train_responses, ctx.dev_responses, ctx.cache_dir,
-        mse_weight=row["mse_weight"], nll_weight=row["nll_weight"],
-    )
-    gate = GateState(result["weight"].to("cuda"), result["bias"].to("cuda"), result["coeff_bias"].to("cuda"))
-    return make_inference_hook(gate, result["direction"].to("cuda"))
 
-
-def _retrain_conceptor_matrix(row: dict, ctx: SearchContext):
-    from src.psr.conceptor.matrix.train import train_one_config
+def _hook_conceptor_matrix(result: dict, row: dict):
     from steering.psr.conceptor.matrix.logic import make_inference_hook
-
-    result = train_one_config(
-        ctx.model, ctx.tokenizer, row["layer"], row["alpha"], ctx.seed, ctx.n_layers, "cuda",
-        ctx.train_items, ctx.dev_items, ctx.train_responses, ctx.dev_responses, ctx.cache_dir,
-        mse_weight=row["mse_weight"], nll_weight=row["nll_weight"],
-    )
     gate = GateState(result["weight"].to("cuda"), result["bias"].to("cuda"), result["coeff_bias"].to("cuda"))
-    return make_inference_hook(gate, result["conceptor"].to("cuda"), result["mu_instr"].to("cuda"), result["delta_scale"].to("cuda"))
+    return make_inference_hook(gate, result["conceptor"].to("cuda"), result["mu_instr"].to("cuda"),
+                               result["delta_scale"].to("cuda"))
 
 
-def _retrain_conceptor_selfproj(row: dict, ctx: SearchContext):
-    from src.psr.conceptor.selfproj.train import train_one_config
+def _hook_conceptor_selfproj(result: dict, row: dict):
     from steering.psr.conceptor.selfproj.logic import make_inference_hook
-
-    result = train_one_config(
-        ctx.model, ctx.tokenizer, row["layer"], row["alpha"], ctx.seed, ctx.n_layers, "cuda",
-        ctx.train_items, ctx.dev_items, ctx.train_responses, ctx.dev_responses, ctx.cache_dir,
-        mse_weight=row["mse_weight"], nll_weight=row["nll_weight"],
-    )
     if result.get("skipped"):
         return None  # delta_scale collapsed at this alpha -- same skip condition the sweep used
     gate = GateState(result["weight"].to("cuda"), result["bias"].to("cuda"), result["coeff_bias"].to("cuda"))
     return make_inference_hook(gate, result["conceptor"].to("cuda"), result["delta_scale_tensor"].to("cuda"))
+
+
+# Every TRAINED variant goes through _stored(): trained at most once, then loaded by Tier 2, Final,
+# regen_token_cis, and any rerun. Names stay _retrain_* so nothing that imports them breaks.
+_retrain_proper = _stored("proper", _train_proper, _hook_gate)
+_retrain_single_gate = _stored("sg", _train_single_gate, _hook_gate)
+_retrain_conceptor = _stored("conceptor", _train_conceptor, _hook_gate)
+_retrain_conceptor_matrix = _stored("conceptor_matrix", _train_conceptor_matrix, _hook_conceptor_matrix)
+_retrain_conceptor_selfproj = _stored("conceptor_selfproj", _train_conceptor_selfproj, _hook_conceptor_selfproj)
+_retrain_sg_clamp = _stored("sg_clamp", _train_sg_clamp, _hook_sg_clamp, legacy_fn=_legacy_sg_clamp)
 
 
 def _build_const(row: dict, ctx: SearchContext):
@@ -646,6 +738,7 @@ def build_search_context(adapter, seed: int) -> SearchContext:
         model=model, tokenizer=tokenizer, n_layers=num_layers(model), hidden_size=model.config.hidden_size,
         cache_dir=adapter.CACHE_DIR, train_items=train_items, dev_items=dev_items,
         train_responses=train_responses, dev_responses=dev_responses, seed=seed,
+        results_dir=adapter.RESULTS_DIR,
     )
 
 

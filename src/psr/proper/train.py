@@ -12,6 +12,8 @@ import os
 
 import torch
 
+from core import gate_store as _gate_store
+
 from adapters.registry import get_adapter
 from core.model_common import generate_response, load_model, num_layers, generate_response_with_meta
 from core.generation_cache import load_or_compute_responses
@@ -227,6 +229,10 @@ def sweep(
 
     checkpoints_by_point = {}
 
+    # every point's gate goes into core/gate_store so the judged search and regen_token_cis
+    # load it instead of retraining it (see core/gate_store.py)
+    _fp = _gate_store.fingerprint(seed, train_items, train_responses, dev_items)
+
     def train_fn(point: dict) -> dict:
         result = train_one_config(
             model, tokenizer, point["layer"], seed, n_layers, hidden_size, device,
@@ -235,6 +241,7 @@ def sweep(
         )
         key = (point["layer"], point["mse_weight"], point["nll_weight"])
         checkpoints_by_point[key] = result
+        _gate_store.save(_gate_store.point_path(adapter.RESULTS_DIR, "proper", point, _fp), "proper", result)
         print(f"layer={point['layer']} mse_weight={point['mse_weight']} nll_weight={point['nll_weight']} "
               f"final_mse={result['final_mse']:.4f} final_nll={result['final_nll']:.4f}")
         return {k: v for k, v in result.items() if k not in ("weight", "bias", "coeff_bias", "direction")}

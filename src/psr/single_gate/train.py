@@ -41,6 +41,8 @@ from pathlib import Path
 
 import torch
 
+from core import gate_store as _gate_store
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from adapters.registry import get_adapter
@@ -207,6 +209,10 @@ def sweep(task: str, layers: list[int] | None = None, loss_config_grid: list[dic
 
     checkpoints_by_point = {}
 
+    # every point's gate goes into core/gate_store so the judged search and regen_token_cis
+    # load it instead of retraining it (see core/gate_store.py)
+    _fp = _gate_store.fingerprint(seed, train_items, train_responses, dev_items)
+
     def train_fn(point: dict) -> dict:
         result = train_one_config(
             model, tokenizer, point["layer"], seed, n_layers, model.config.hidden_size, device,
@@ -214,6 +220,7 @@ def sweep(task: str, layers: list[int] | None = None, loss_config_grid: list[dic
             mse_weight=point["mse_weight"], nll_weight=point["nll_weight"],
         )
         checkpoints_by_point[(point["layer"], point["mse_weight"], point["nll_weight"])] = result
+        _gate_store.save(_gate_store.point_path(adapter.RESULTS_DIR, "sg", point, _fp), "sg", result)
         print(f"layer={point['layer']} mse_weight={point['mse_weight']} nll_weight={point['nll_weight']} "
               f"final_mse={result['final_mse']:.4f} final_nll={result['final_nll']:.4f}")
         return {k: v for k, v in result.items() if k not in ("weight", "bias", "coeff_bias", "direction")}
