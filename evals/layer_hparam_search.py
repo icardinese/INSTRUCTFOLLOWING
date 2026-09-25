@@ -783,14 +783,28 @@ def run_tiered_search(
     top_k_layers: int = DEFAULT_TOP_K_LAYERS,
     seed: int = 42,
     max_batch_rows: int = DEFAULT_MAX_BATCH_ROWS,
+    tier1_all_points: bool = False,
+    objective: str | None = None,
 ) -> None:
+    """tier1_all_points=True: Tier 1 judges EVERY sweep point (every layer, loss config and alpha)
+    on real generations, instead of only the MSE-best point per layer. The default prefilter lets
+    final_mse choose within each layer, which silently discards every NLL-trained gate (the MSE
+    config always has the lower final_mse -- it is what that config minimized) and every non-best
+    alpha, before any generation is scored. With all points, only judged accuracy decides.
+
+    objective ("mse" | "nll") restricts Tier 1 to one training objective and writes its own results
+    file, so each objective's winner is reported as its own row -- the way the caveman table reports
+    (MSE) and (NLL) separately, and what comparing the two objectives (finding F5) requires."""
+    if objective not in (None, "mse", "nll"):
+        raise ValueError(f"objective must be 'mse', 'nll' or None, got {objective!r}")
     adapter = get_adapter(task)
     eval_adapter = get_eval_adapter(task)
     sweep_path = adapter.RESULTS_DIR / f"psr_{variant}_sweep.jsonl"
     if not sweep_path.exists():
         raise FileNotFoundError(f"{sweep_path} not found -- run that variant's --sweep first")
 
-    out_path = adapter.RESULTS_DIR / f"{variant}_tiered_search.jsonl"
+    suffix = ("_allpoints" + (f"_{objective}" if objective else "")) if tier1_all_points else ""
+    out_path = adapter.RESULTS_DIR / f"{variant}{suffix}_tiered_search.jsonl"
     existing = load_existing_tiered_results(out_path)
     if "final" in existing:
         print(f"{out_path} already has a Final result for '{variant}' -- fully done, skipping. "
@@ -816,7 +830,16 @@ def run_tiered_search(
         tier1_results = existing["tier1"]
     else:
         print(f"== Tier 1: layer sweep, n={tier1_n}, real judged evaluation decides survivors ==")
-        tier1_candidates = list(best_row_per_layer(sweep_rows).values())
+        if tier1_all_points:
+            tier1_candidates = [r for r in sweep_rows if not r.get("skipped", False) and "layer" in r]
+            if objective == "mse":
+                tier1_candidates = [r for r in tier1_candidates if r["mse_weight"] > 0 and r["nll_weight"] == 0]
+            elif objective == "nll":
+                tier1_candidates = [r for r in tier1_candidates if r["nll_weight"] > 0 and r["mse_weight"] == 0]
+            print(f"  every-point Tier 1: {len(tier1_candidates)} candidates"
+                  f"{f' ({objective} objective)' if objective else ''} -- no MSE prefilter")
+        else:
+            tier1_candidates = list(best_row_per_layer(sweep_rows).values())
         print(f"{len(tier1_candidates)} layers to evaluate (MSE-best hyperparameter combo per layer)")
         tier1_results = evaluate_candidates(variant, tier1_candidates, ctx, adapter, eval_adapter, tier1_n, split="dev", max_batch_rows=max_batch_rows)
         write("tier1", tier1_results)
@@ -1021,6 +1044,10 @@ if __name__ == "__main__":
     parser.add_argument("--final-n", type=int, default=DEFAULT_FINAL_N)
     parser.add_argument("--top-k-layers", type=int, default=DEFAULT_TOP_K_LAYERS)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--tier1-all-points", action="store_true",
+                        help="Tier 1 judges EVERY sweep point on generations, not just the MSE-best per layer")
+    parser.add_argument("--objective", choices=["mse", "nll"], default=None,
+                        help="restrict to one training objective; each gets its own results file")
     parser.add_argument("--max-batch-rows", type=int, default=DEFAULT_MAX_BATCH_ROWS,
                         help="cap on rows (candidates x prompts) per generate() call -- lower this if you hit CUDA OOM")
     args = parser.parse_args()
@@ -1032,4 +1059,5 @@ if __name__ == "__main__":
         if args.variant in TRAINING_FREE_VARIANTS:
             run_training_free_search(args.task, args.variant, args.tier1_n, args.final_n, seed=args.seed, max_batch_rows=args.max_batch_rows)
         else:
-            run_tiered_search(args.task, args.variant, args.tier1_n, args.tier2_n, args.final_n, args.top_k_layers, args.seed, args.max_batch_rows)
+            run_tiered_search(args.task, args.variant, args.tier1_n, args.tier2_n, args.final_n, args.top_k_layers, args.seed, args.max_batch_rows,
+                              tier1_all_points=args.tier1_all_points, objective=args.objective)

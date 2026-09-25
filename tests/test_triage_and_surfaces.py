@@ -287,3 +287,95 @@ def test_triage_score_fields_are_numeric():
     for f in j.SCORE_FIELDS:
         assert isinstance(out[f], (int, float)), f"SCORE_FIELDS entry {f!r} is not numeric"
     assert out["predicted"] == "email", "the label is still returned for inspection"
+
+
+# --- every-point Tier 1: every sweep setting gets judged on generations -------------------------
+
+def _run_search_capturing_tier1(tmp_path, monkeypatch, sweep_rows, variant, **kw):
+    import json as _json
+    import evals.layer_hparam_search as mod
+    (tmp_path / f"psr_{variant}_sweep.jsonl").write_text("".join(_json.dumps(r) + "\n" for r in sweep_rows))
+
+    class A:
+        RESULTS_DIR = tmp_path; CACHE_DIR = tmp_path / "cache"; MODEL_NAME = "fake"
+        def load_rows(self, split): return [{"id": "0"}]
+        def to_items(self, tok, rows): return [{"id": "0", "base_prompt": "p", "terse_prompt": "tp"}]
+
+    class E:
+        SCORE_FIELDS = ["correct", "parsed"]; PRIMARY_FIELD_MAX = 1; RANK_BY = "primary_desc"
+
+    monkeypatch.setattr(mod, "get_adapter", lambda t: A())
+    monkeypatch.setattr(mod, "get_eval_adapter", lambda t: E())
+    class _M(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.config = type("C", (), {"hidden_size": 16})()
+    monkeypatch.setattr(mod, "load_model", lambda device, model_name=None: (_M(), object()))
+    monkeypatch.setattr(mod, "num_layers", lambda m: 28)
+    monkeypatch.setattr(mod, "load_or_compute_responses", lambda *a, **k: {})
+    seen = {}
+
+    def fake_eval(variant_, cands, ctx, adapter, ea, n, split="dev", max_batch_rows=None):
+        tier = {"dev": "tier1" if "tier1" not in seen else "tier2", "test": "final"}[split]
+        seen[tier] = [dict(c) for c in cands]
+        return [{**c, "skipped": False, "judged_score": 0.9, "ci_lo": 0.8, "ci_hi": 1.0,
+                 "correctness_scores": [1.0] * n, "optimize_score": 1.0,
+                 "optimize_ci_lo": 1.0, "optimize_ci_hi": 1.0, "n": n,
+                 "fully_correct_rate": 0.9, "avg_tokens": 10.0,
+                 "prompt_fully_correct_rate": 0.8, "prompt_avg_tokens": 12.0} for c in cands]
+
+    monkeypatch.setattr(mod, "evaluate_candidates", fake_eval)
+    mod.run_tiered_search("triage", variant, tier1_n=2, tier2_n=2, final_n=2, **kw)
+    return seen
+
+
+def _sweep(layers=(2, 4, 6), alphas=None):
+    rows = []
+    for L in layers:
+        for a in (alphas or [None]):
+            for m, n, mse in ((1.0, 0.0, 1.0), (0.0, 1.0, 9.0)):   # MSE config always has lower final_mse
+                r = {"layer": L, "mse_weight": m, "nll_weight": n, "final_mse": mse + L / 100}
+                if a is not None:
+                    r["alpha"] = a
+                rows.append(r)
+    return rows
+
+
+def test_default_prefilter_never_judges_an_nll_gate(tmp_path, monkeypatch):
+    """Documents the problem being fixed: best_row_per_layer lets final_mse choose within a layer,
+    and the MSE-trained config always wins that, so no NLL gate is ever generated from."""
+    seen = _run_search_capturing_tier1(tmp_path, monkeypatch, _sweep(), "proper")
+    assert all(c["nll_weight"] == 0 for c in seen["tier1"])
+
+
+def test_every_point_nll_search_judges_every_nll_gate(tmp_path, monkeypatch):
+    seen = _run_search_capturing_tier1(tmp_path, monkeypatch, _sweep(), "proper",
+                                       tier1_all_points=True, objective="nll")
+    got = sorted((c["layer"], c["mse_weight"], c["nll_weight"]) for c in seen["tier1"])
+    assert got == [(2, 0.0, 1.0), (4, 0.0, 1.0), (6, 0.0, 1.0)]
+
+
+def test_every_point_judges_every_alpha_not_just_the_mse_best(tmp_path, monkeypatch):
+    seen = _run_search_capturing_tier1(tmp_path, monkeypatch, _sweep(alphas=[1.0, 2.0, 4.0]),
+                                       "conceptor", tier1_all_points=True, objective="mse")
+    assert len(seen["tier1"]) == 3 * 3, "every layer x every alpha for the objective"
+    assert {c["alpha"] for c in seen["tier1"]} == {1.0, 2.0, 4.0}
+
+
+def test_each_objective_writes_its_own_results_and_default_file_is_untouched(tmp_path, monkeypatch):
+    _run_search_capturing_tier1(tmp_path, monkeypatch, _sweep(), "sg", tier1_all_points=True, objective="mse")
+    _run_search_capturing_tier1(tmp_path, monkeypatch, _sweep(), "sg", tier1_all_points=True, objective="nll")
+    assert (tmp_path / "sg_allpoints_mse_tiered_search.jsonl").exists()
+    assert (tmp_path / "sg_allpoints_nll_tiered_search.jsonl").exists()
+    assert not (tmp_path / "sg_tiered_search.jsonl").exists(), "every-point runs must not clobber the default file"
+
+
+def test_regen_reports_each_objective_as_its_own_row():
+    import importlib
+    regen = importlib.import_module("scripts.regen_token_cis")
+    for v in ("proper", "sg", "sg_clamp", "conceptor"):
+        for obj in ("mse", "nll"):
+            key = f"{v}_{obj}"
+            assert regen.TIERED_ALLPOINTS[key] == (v, [f"{v}_allpoints_{obj}"])
+    for v in ("sg_clamp", "const_resp", "stolfo_resp"):
+        assert v in regen.TIERED, f"{v} winners would never reach token_distributions.json"

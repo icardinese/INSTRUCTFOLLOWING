@@ -51,6 +51,16 @@ TIERED = {
     "conceptor_selfproj": ["sg_conc_selfproj", "conceptor_selfproj"],
     "const": ["nogate_dim", "const"],
     "stolfo": ["nogate_clamp", "stolfo"],
+    # previously absent, so their tiered-search winners never reached token_distributions.json
+    "sg_clamp": ["sg_clamp"],
+    "const_resp": ["const_resp"],
+    "stolfo_resp": ["stolfo_resp"],
+}
+# Every-point searches (layer_hparam_search --tier1-all-points --objective {mse,nll}), one per
+# objective, so each objective's winner is its own row: output key -> (RETRAIN_FNS variant, stems).
+TIERED_ALLPOINTS = {
+    f"{v}_{obj}": (v, [f"{v}_allpoints_{obj}"])
+    for v in ("proper", "sg", "sg_clamp", "conceptor") for obj in ("mse", "nll")
 }
 # all-layer checkpoints: stem -> label. These carry their own winning loss config in the filename.
 ALL_LAYER = {
@@ -159,12 +169,14 @@ def main(task: str, n: int, seed: int, max_batch_rows: int, only: list[str] | No
               f"[{out[key]['ci_lo']:.1f}, {out[key]['ci_hi']:.1f}]  sd={out[key]['sd']:.1f}")
 
     # ---- single-layer variants, at their own tiered-search winner ----
-    for variant, stems in TIERED.items():
-        if only and variant not in only:
+    entries = [(v, v, stems) for v, stems in TIERED.items()] + \
+              [(k, v, stems) for k, (v, stems) in TIERED_ALLPOINTS.items()]
+    for row_key, variant, stems in entries:
+        if only and row_key not in only and variant not in only:
             continue
         winner, src = _find_final(adapter.RESULTS_DIR, stems)
         if winner is None:
-            print(f"{variant:<28} SKIP (no tiered-search Final)")
+            print(f"{row_key:<28} SKIP (no tiered-search Final)")
             continue
         try:
             hook = RETRAIN_FNS[variant](winner, ctx)
@@ -183,8 +195,8 @@ def main(task: str, n: int, seed: int, max_batch_rows: int, only: list[str] | No
             s = summarize(counts)
             stored = _stored_mean(adapter.RESULTS_DIR, variant, cond, winner)
             drift = None if stored is None else s["avg_tokens"] - stored
-            key = f"{variant}_{cond}"
-            out[key] = {"label": f"{variant} ({cond})", "variant": variant, "condition": cond,
+            key = f"{row_key}_{cond}"
+            out[key] = {"label": f"{row_key} ({cond})", "variant": variant, "condition": cond,
                          "layer": winner["layer"], "source": src,
                          "stored_avg_tokens": stored, "drift_vs_stored": drift, **s,
                          "responses": rs}
