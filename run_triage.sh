@@ -103,31 +103,17 @@ done
 # ---------------------------------------------------------------- judged layer selection
 # This is what actually picks the reported layer. The sweeps above only minimize dev MSE/NLL,
 # which is not the metric the paper reports.
-# EVERY-POINT judged search: Tier 1 scores every sweep setting (every layer, and every alpha for
-# conceptor) on real generations, once per objective, so MSE and NLL each get their own reported
-# row. No final_mse prefilter decides anything -- judged dev accuracy picks, test only reports.
-# Cheap variants first so their results land even if the session ends during conceptor.
-for v in proper sg sg_clamp; do
-    for obj in mse nll; do
-        step "every-point judged search: $v ($obj)" \
-            python3 -u evals/layer_hparam_search.py --task triage --variant "$v" \
-                --tier1-all-points --objective "$obj" --max-batch-rows 11
-    done
+# Judged layer search -- the SAME two-stage protocol caveman used:
+#   Tier 1: one representative setting per layer, judged on dev generations -> picks the top layers
+#   Tier 2: EVERY hyperparameter setting (both objectives, every alpha) at those layers, judged
+#   Final : the winner, reported on test
+# Tier 1 and Tier 2 already finished for all four variants on 2026-09-25; each resumes into Final.
+# (Every-point Tier 1 is still available via --tier1-all-points --objective {mse,nll}, but it is
+# stricter than caveman's protocol, so using it for triage alone would make the tasks inconsistent.)
+for v in proper sg sg_clamp conceptor; do
+    step "judged layer search: $v" \
+        python3 -u evals/layer_hparam_search.py --task triage --variant "$v" --max-batch-rows 11
 done
-
-# Conceptor has 65 settings per objective and most of its gates predate the gate store, so it is
-# by far the most training. Its two objectives are independent -- separate results files, separate
-# gate-store keys, atomic writes -- so they run side by side on the A100 (~25GB each).
-step "every-point judged search: conceptor (mse + nll in parallel)" bash -c '
-    python3 -u evals/layer_hparam_search.py --task triage --variant conceptor \
-        --tier1-all-points --objective mse --max-batch-rows 11 > results/triage/conceptor_mse_search.log 2>&1 &
-    p1=$!
-    python3 -u evals/layer_hparam_search.py --task triage --variant conceptor \
-        --tier1-all-points --objective nll --max-batch-rows 11 > results/triage/conceptor_nll_search.log 2>&1 &
-    p2=$!
-    wait $p1; r1=$?; wait $p2; r2=$?
-    echo "conceptor mse exit=$r1  nll exit=$r2  (logs: results/triage/conceptor_{mse,nll}_search.log)"
-    [ $r1 -eq 0 ] && [ $r2 -eq 0 ]'
 
 step "tiered summary" \
     python3 -u evals/layer_hparam_search.py --task triage --summarize

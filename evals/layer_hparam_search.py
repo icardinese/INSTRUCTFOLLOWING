@@ -852,7 +852,10 @@ def run_tiered_search(
         print(f"Tier 1 survivors (FALLBACK -- none beat/tied Prompt alone, ranked by correctness "
               f"instead of conciseness): {[s['layer'] for s in survivors]}")
     else:
-        print(f"Tier 1 survivors (top {top_k_layers} by avg_tokens, among those beating/tying "
+        # The axis is task-declared (RANK_BY). This message used to hardcode "avg_tokens", which was
+        # true only for caveman and made triage logs claim a token ranking that never happened.
+        _axis = {"avg_tokens": "fewest avg_tokens", "primary_desc": f"highest {eval_adapter.SCORE_FIELDS[0]}"}[_rank_by_for(eval_adapter)]
+        print(f"Tier 1 survivors (up to {top_k_layers}, ranked by {_axis}, among those beating/tying "
               f"Prompt and not significantly less correct than the grid's best): {[s['layer'] for s in survivors]}")
 
     if "tier2" in existing:
