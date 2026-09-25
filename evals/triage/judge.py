@@ -24,7 +24,11 @@ import re
 RANK_BY = "primary_desc"     # descending on "correct"
 PRIMARY_FIELD_MAX = 1        # exact match is 0/1
 
-SCORE_FIELDS = ["correct", "parsed", "predicted"]
+# NUMERIC fields only. evals/summarize.py, evals/bootstrap_analysis.py and evals/plotting.py sum every
+# SCORE_FIELDS entry, so the string label "predicted" crashed all three (int + str). score_response
+# still returns "predicted" for inspection; it just isn't declared as a score. It can always be
+# recomputed from the stored response with parse_label().
+SCORE_FIELDS = ["correct", "parsed"]
 
 _LABELS = ("no", "email", "notify")
 # Anchored on the required final line first. The fallback scans for a bare label at the very end,

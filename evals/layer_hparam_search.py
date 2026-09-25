@@ -542,13 +542,45 @@ def evaluate_candidates(
     terse_prompts = [item["terse_prompt"] for item in items]
     prompts_by_group[_PROMPT_BASELINE_GROUP] = terse_prompts
 
-    responses_by_group: dict[Any, list[str]] = {}
-    for chunk_group_ids in _chunk_groups_by_row_budget(prompts_by_group, max_batch_rows):
-        chunk_prompts = {g: prompts_by_group[g] for g in chunk_group_ids}
-        chunk_hooks = {g: hook_fns_by_group[g] for g in chunk_group_ids if g in hook_fns_by_group}
-        chunk_layers = {g: layer_by_group[g] for g in chunk_group_ids if g in layer_by_group}
-        chunk_responses = generate_with_routed_configs(ctx.model, ctx.tokenizer, chunk_prompts, chunk_hooks, chunk_layers)
-        responses_by_group.update(chunk_responses)
+    # Split every group into row slices of at most max_batch_rows BEFORE packing. The packer alone
+    # never splits a group, so a single oversize group -- Final's one candidate x 180 prompts, plus
+    # the Prompt baseline's 180 INSTRUCTED prompts -- went through generate in ONE call no matter
+    # what max_batch_rows said. That fit for caveman's ~470-token prompts; for triage's ~1,700-token
+    # prompts it is ~306k token positions in one prefill and OOM'd on an 80GB A100 (the 10.67 GiB
+    # allocation is the MLP intermediate: 306k x 18,944 x 2 bytes).
+    #
+    # Each call still receives ORIGINAL group keys -- an oversize group is spread across several
+    # calls, never renamed -- so generate_with_routed_configs' contract is unchanged. A group appears
+    # at most once per call. When no group exceeds the cap, the packing below is exactly the old
+    # greedy packing, call for call.
+    row_cap = max_batch_rows or max((len(p) for p in prompts_by_group.values()), default=1)
+    units = [(g, start, ps[start:start + row_cap])
+             for g, ps in prompts_by_group.items() for start in range(0, len(ps), row_cap)]
+    calls: list[list] = []
+    current, size = [], 0
+    for unit in units:
+        n = len(unit[2])
+        if current and (size + n > row_cap or any(u[0] == unit[0] for u in current)):
+            calls.append(current)
+            current, size = [], 0
+        current.append(unit)
+        size += n
+    if current:
+        calls.append(current)
+
+    parts: dict = {}
+    for call in calls:
+        chunk_prompts = {g: slice_ for g, _, slice_ in call}
+        chunk_hooks = {g: hook_fns_by_group[g] for g, _, _ in call if g in hook_fns_by_group}
+        chunk_layers = {g: layer_by_group[g] for g, _, _ in call if g in layer_by_group}
+        out = generate_with_routed_configs(ctx.model, ctx.tokenizer, chunk_prompts, chunk_hooks, chunk_layers)
+        for g, start, _ in call:
+            parts[(g, start)] = out[g]
+
+    responses_by_group: dict[Any, list[str]] = {
+        g: [r for start in range(0, len(ps), row_cap) for r in parts[(g, start)]]
+        for g, ps in prompts_by_group.items()
+    }
 
     # None means "ask the task" -- caveman judges 0/1/2, ifeval and triage are both 0/1, so a
     # single hardcoded max made fully_correct_rate identically zero for the latter two.

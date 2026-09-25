@@ -208,3 +208,82 @@ def test_missing_gold_fails_loudly():
 def test_triage_judge_exposes_the_shared_eval_contract():
     mod = get_eval_adapter("triage")
     assert mod.SCORE_FIELDS and callable(mod.score_response)
+
+
+# --- Final tier must honour max_batch_rows (the 2026-09-25 OOM) ---------------------------------
+
+def _run_evaluate_with_fake_generate(monkeypatch, n_candidates, n_prompts, cap):
+    """Drive the REAL evaluate_candidates with generate replaced by a recorder. Each response
+    encodes (group, prompt) so ordering and routing can be checked exactly."""
+    import evals.layer_hparam_search as mod
+
+    calls = []
+
+    def fake_generate(model, tok, prompts_by_group, hooks_by_group, layer_by_group):
+        calls.append({"rows": sum(len(v) for v in prompts_by_group.values()),
+                      "hooks": {k: hooks_by_group.get(k) for k in prompts_by_group},
+                      "layers": {k: layer_by_group.get(k) for k in prompts_by_group}})
+        return {k: [f"{k}|{p}" for p in v] for k, v in prompts_by_group.items()}
+
+    monkeypatch.setattr(mod, "generate_with_routed_configs", fake_generate)
+    monkeypatch.setattr(mod, "_score_all_concurrently",
+                        lambda ea, rows, responses: [{"correct": 1, "parsed": 1} for _ in responses])
+    monkeypatch.setattr(mod, "_avg_tokens", lambda ctx, responses: 1.0)
+
+    class A:
+        def load_rows(self, split): return [{"id": str(i), "gold": "no"} for i in range(n_prompts)]
+        def to_items(self, tok, rows): return [{"id": r["id"], "base_prompt": f"B{r['id']}",
+                                                "terse_prompt": f"T{r['id']}"} for r in rows]
+
+    class E:
+        SCORE_FIELDS = ["correct", "parsed"]; PRIMARY_FIELD_MAX = 1; RANK_BY = "primary_desc"
+
+    hooks = {}
+    def retrain(cand, ctx):
+        hooks[cand["layer"]] = f"hook-L{cand['layer']}"
+        return hooks[cand["layer"]]
+    monkeypatch.setitem(mod.RETRAIN_FNS, "proper", retrain)
+    ctx = type("C", (), {"model": None,
+                         "tokenizer": staticmethod(lambda text, **k: {"input_ids": text.split()})})()
+    cands = [{"layer": 10 + 2 * i, "mse_weight": 1.0, "nll_weight": 0.0} for i in range(n_candidates)]
+    results = mod.evaluate_candidates("proper", cands, ctx, A(), E(), n_prompts, split="test",
+                                      max_batch_rows=cap)
+    return calls, results
+
+
+def test_final_tier_never_exceeds_max_batch_rows(monkeypatch):
+    """Final is ONE candidate x 180 prompts plus a 180-prompt baseline. The packer never split a
+    group, so all 180 went through generate at once and OOM'd on triage's 1.7k-token prompts."""
+    calls, _ = _run_evaluate_with_fake_generate(monkeypatch, n_candidates=1, n_prompts=180, cap=11)
+    assert max(c["rows"] for c in calls) <= 11
+    assert sum(c["rows"] for c in calls) == 360, "every prompt (candidate + baseline) generated exactly once"
+
+
+def test_sliced_responses_reassemble_in_order_with_correct_routing(monkeypatch):
+    calls, results = _run_evaluate_with_fake_generate(monkeypatch, n_candidates=2, n_prompts=25, cap=11)
+    # every slice of group g carries group g's hook and layer, never a neighbour's
+    for c in calls:
+        for g, hook in c["hooks"].items():
+            if isinstance(g, int):
+                assert hook == f"hook-L{10 + 2 * g}" and c["layers"][g] == 10 + 2 * g
+            else:
+                assert hook is None and c["layers"][g] is None, "Prompt baseline must stay unsteered"
+    assert max(c["rows"] for c in calls) <= 11
+
+
+def test_tier1_shape_unchanged_when_groups_already_fit(monkeypatch):
+    """Tier 1 packs several small groups per call; slicing must not change that behaviour."""
+    calls, _ = _run_evaluate_with_fake_generate(monkeypatch, n_candidates=13, n_prompts=5, cap=11)
+    assert max(c["rows"] for c in calls) <= 11
+    assert sum(c["rows"] for c in calls) == 13 * 5 + 5
+
+
+def test_triage_score_fields_are_numeric():
+    """summarize / bootstrap_analysis / plotting sum every SCORE_FIELDS entry; a string field
+    ('predicted') crashed all three with int + str."""
+    import importlib
+    j = importlib.import_module("evals.triage.judge")
+    out = j.score_response({"id": "a", "gold": "email"}, "Triage: email")
+    for f in j.SCORE_FIELDS:
+        assert isinstance(out[f], (int, float)), f"SCORE_FIELDS entry {f!r} is not numeric"
+    assert out["predicted"] == "email", "the label is still returned for inspection"
